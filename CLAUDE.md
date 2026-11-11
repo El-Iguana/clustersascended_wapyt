@@ -116,6 +116,24 @@ in `~/asa-cluster`). Full plan: `~/.claude/plans/tender-meandering-panda.md`.
   (ASA starts a new log each boot) starts over. Commands go over RCON; replies show in blue.
 - Map page tabs: Overview · Players · Console · Settings · Backups (`#/map/<id>/<tab>`).
 
+## Adding a map (2026-11-11)
+
+- Wizard `#/cluster/<id>/add` (`ui/add_map.py`) → `supervisor.enqueue_add_map` →
+  `lifecycle.add_map` (lifecycle lane). **Only with every map on the host stopped and no other
+  lifecycle/stop job** (`addmap.busy_maps`), checked at enqueue and again in the job; the wizard
+  offers "Save and stop every map".
+- `engine/addmap.py`: suggestions (next session name in the cluster's pattern, next free ports
+  host-wide + `ss`, last priority, installs to copy), `plan` (map not already in the cluster,
+  ports free, target folders absent or empty, disk space = source size + 5 GiB).
+- Layout like the cluster's: `<root>/ServerFiles_<Folder>/arkserver`, `<root>/Instance_<Folder>/Saved`
+  (`services/ark_maps.py` names the folders), made and owned 7777 inside `podman unshare`.
+  Install by `podman unshare cp -a` of an existing map's install (progress in the job's stage),
+  or "download": an update-pass boot (UPDATE_SERVER=TRUE) on an empty install, then stop —
+  **unverified against POK** (copy is the default).
+- New map: cluster settings and mods (inherit), autostart off, last priority, container created;
+  optional start through the queue. Any failure removes the server row, its container and the
+  folders it made.
+
 ## Layout
 
 ```
@@ -170,7 +188,7 @@ three timeouts mark podman degraded).
    cluster and map editing, mods editor, watchdog, boot autostart, crashloop guard,
    sequential updates with pre-update backups, world backups. Cutover done 2026-11-11.
 3. Live ops: ✅ game settings, named mods, players (kick, cluster bans, messages, history) and
-   console; still to do: add-map wizard.
+   console, add-map wizard (2026-11-11).
 4. ✅ World backups, restore, nightly backups and daily restarts (2026-11-11); files still to do.
 5. Schedules (restarts with warnings, backups, update checks), memory history charts.
 

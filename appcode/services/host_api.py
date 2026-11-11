@@ -76,7 +76,7 @@ class HostApi:
             "clusters": clusters,
             "jobs": active,
             "queue": [{"id": j["id"], "kind": j["kind"], "server": j["server"],
-                       "name": names.get(j["server"], j["server"]), "state": j["state"],
+                       "name": names.get(j["server"]) or j["params"].get("name") or j["server"], "state": j["state"],
                        "stage": j.get("stage"), "detail": j.get("detail"), "attempt": j.get("attempt"),
                        "requested_by": j["requested_by"]} for j in supervisor.queue()],
         }

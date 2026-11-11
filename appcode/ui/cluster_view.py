@@ -10,6 +10,7 @@ from __future__ import annotations
 import js
 
 from services.cluster_api import ClusterApi
+from ui.add_map import AddMapView
 from ui.backups_tab import BackupsTab
 from ui.common import Listeners, closest, esc, failed, spawn, toast
 from ui.game_settings import GameSettingsTab
@@ -30,7 +31,7 @@ class ClusterView:
     def __init__(self, container, cluster_id: str, tab: str = "") -> None:
         self.el = container
         self.cluster_id = cluster_id
-        self.tab = tab if tab in ("settings", "mods", "backups") else ""
+        self.tab = tab if tab in ("settings", "mods", "backups", "add") else ""
         self.listeners = Listeners()
         self.child = None
 
@@ -54,6 +55,9 @@ class ClusterView:
             self.child.mount()
         elif self.tab == "backups":
             self.child = BackupsTab(body, self.cluster_id)
+            self.child.mount()
+        elif self.tab == "add":
+            self.child = AddMapView(body, self.cluster_id)
             self.child.mount()
         else:
             self.listeners.on(self.el, "click", self._on_click)
@@ -93,7 +97,8 @@ class ClusterView:
             return
         body.innerHTML = f"""
 <div class="ca-two">
-<section class="ca-card"><h2>Maps in this cluster</h2>
+<section class="ca-card"><div class="ca-host-head"><h2>Maps in this cluster</h2>
+  <a class="ca-btn ca-primary" href="#/cluster/{esc(self.cluster_id)}/add"><span class="mdi mdi-map-plus"></span> Add a map</a></div>
   <div class="ca-sub">Survivors, creatures and items can travel between them through obelisks and terminals.</div>
   <div class="ca-mapcards">{maps}</div></section>
 <section class="ca-card ca-form">

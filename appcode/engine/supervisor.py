@@ -29,7 +29,7 @@ from engine import admission, state, store
 LANES = ("lifecycle", "stop", "io")
 KIND_LANE = {"start": "lifecycle", "restart": "lifecycle", "make_room_start": "lifecycle",
              "adopt": "lifecycle", "rollback": "lifecycle", "update": "lifecycle",
-             "restore": "lifecycle", "warned_restart": "lifecycle",
+             "restore": "lifecycle", "warned_restart": "lifecycle", "add_map": "lifecycle",
              "stop": "stop", "backup": "io"}
 ACTIVE = ("queued", "running")
 
@@ -152,7 +152,28 @@ def enqueue(kind: str, server_id: str, requested_by: str = "admin", params: dict
             "decision": decision.to_dict() if decision else None}
 
 
-CANCELLABLE = frozenset({"start", "restart", "make_room_start", "update", "warned_restart"})
+CANCELLABLE = frozenset({"start", "restart", "make_room_start", "update", "warned_restart", "add_map"})
+
+
+def enqueue_add_map(cluster_id: str, values: dict, requested_by: str = "admin") -> dict:
+    """The add-a-map wizard's job: only with every map stopped and nothing else under way."""
+    from engine import addmap
+
+    with _enqueue_lock:
+        busy = addmap.busy_maps()
+        if busy:
+            return {"ok": False, "error": f"Stop every map first (still running or busy: {', '.join(busy)})."}
+        if any(j["kind"] == "add_map" for j in store.jobs(limit=50, states=ACTIVE)):
+            return {"ok": False, "error": "A map is already being added."}
+        try:
+            plan = addmap.plan(cluster_id, values)
+        except addmap.Invalid as exc:
+            return {"ok": False, "error": str(exc)}
+        job_id = store.add_job("lifecycle", "add_map", plan["server_id"], plan, requested_by)
+        store.set_job(job_id, stage="queued")
+        store.audit(requested_by, "add map", cluster_id, plan)
+    _wake["lifecycle"].set()
+    return {"ok": True, "job": store.job(job_id), "plan": plan}
 
 
 def cancel(job_id: int) -> dict:

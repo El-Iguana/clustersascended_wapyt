@@ -324,6 +324,16 @@ _CSS = """
 .ca-con-input{display:flex;gap:8px;align-items:center;background:#05080f;border:1px solid #334155;border-radius:8px;padding:4px 6px 4px 12px;}
 .ca-con-prompt{color:#38bdf8;font:600 14px ui-monospace,Menlo,Consolas,monospace;}
 .ca-con-input input{flex:1;background:transparent;border:0;color:#e5e7eb;font:13px ui-monospace,Menlo,Consolas,monospace;padding:6px 0;outline:none;}
+#ca-add{display:flex;flex-direction:column;gap:16px;}
+.ca-mapchoices{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;margin:10px 0 14px;}
+.ca-mapchoice{display:flex;flex-direction:column;gap:4px;text-align:left;background:#0b1222;border:1px solid #334155;
+  border-radius:10px;padding:12px 14px;color:#e5e7eb;font:inherit;cursor:pointer;}
+.ca-mapchoice:hover:not([disabled]){border-color:#38bdf8;}
+.ca-mapchoice span{color:#94a3b8;font-size:12.5px;}
+.ca-mapchoice[disabled]{opacity:.45;cursor:not-allowed;}
+.ca-mapchoice.ca-picked{border-color:#38bdf8;background:#0f2a44;box-shadow:0 0 0 2px #38bdf855;}
+.ca-radios{display:flex;flex-direction:column;gap:8px;margin-top:8px;}
+.ca-radio{display:flex;gap:8px;align-items:center;color:#e5e7eb;}
 @media (max-width:700px){.ca-field{grid-template-columns:1fr;}.ca-help{grid-column:1;}.ca-page{padding:12px;}}
 """
 

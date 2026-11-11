@@ -23,9 +23,9 @@ STAGES = {
     "preparing": "Getting ready", "loading": "Loading the world", "verifying": "Checking it answers",
     "settling": "Settling", "measuring": "Measuring memory", "retrying": "Retrying",
     "stopping": "Saving and stopping", "making_room": "Making room", "backing_up": "Backing up",
-    "restoring": "Unpacking the backup", "warning": "Counting down in chat",
+    "restoring": "Unpacking the backup", "warning": "Counting down in chat", "copying": "Copying game files",
 }
-CANCELLABLE = ("start", "restart", "make_room_start", "update", "warned_restart")
+CANCELLABLE = ("start", "restart", "make_room_start", "update", "warned_restart", "add_map")
 
 # Map colours for the memory bar, by position in the cluster list.
 _COLOURS = ("#38bdf8", "#a78bfa", "#34d399", "#f472b6", "#fbbf24", "#60a5fa", "#fb923c", "#2dd4bf")
@@ -142,7 +142,8 @@ class DashboardView:
         rows = []
         for i, j in enumerate(queue, start=1):
             what = (j["kind"].replace("make_room_start", "make room and start")
-                    .replace("warned_restart", "restart with a countdown").replace("_", " "))
+                    .replace("warned_restart", "restart with a countdown")
+                    .replace("add_map", "add a map").replace("_", " "))
             stage = STAGES.get(j.get("stage") or j["state"], j.get("stage") or j["state"])
             tries = f" · try {j['attempt']}" if (j.get("attempt") or 0) > 1 else ""
             detail = esc(j.get("detail") or "")
@@ -183,6 +184,7 @@ class DashboardView:
     </div>
     <div class="ca-sub"><button class="ca-btn" data-act="start_cluster" data-cluster="{esc(c["id"])}">
         <span class="mdi mdi-play-box-multiple-outline"></span> Start all</button>
+      <a href="#/cluster/{esc(c["id"])}/add"><span class="mdi mdi-map-plus"></span> Add a map</a> ·
       <a href="#/cluster/{esc(c["id"])}/settings"><span class="mdi mdi-tune"></span> Game settings</a>
       · <a href="#/cluster/{esc(c["id"])}/mods"><span class="mdi mdi-puzzle-outline"></span> Mods</a>
       · {len(c["servers"])} maps · committed {gib(c["committed"])}</div>

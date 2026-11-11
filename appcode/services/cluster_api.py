@@ -27,3 +27,32 @@ class ClusterApi:
         shown = {k: ("••••••" if "password" in k else v) for k, v in (values or {}).items()}
         store.audit(actor(self._user), "cluster settings", str(cluster_id), shown)
         return {"ok": True, **result}
+
+    def add_map_info(self, cluster_id: str) -> dict:
+        """Defaults and requirements for the add-a-map wizard."""
+        from engine import addmap
+
+        try:
+            return {"ok": True, **addmap.suggest(str(cluster_id))}
+        except addmap.Invalid as exc:
+            return {"ok": False, "error": str(exc)}
+
+    def add_map(self, cluster_id: str, values: dict) -> dict:
+        from engine import supervisor
+        from services.auth import actor
+
+        return supervisor.enqueue_add_map(str(cluster_id), dict(values or {}), requested_by=actor(self._user))
+
+    def stop_all(self) -> dict:
+        """Save and stop every running map on this machine (for the wizard)."""
+        from engine import state, store, supervisor
+        from engine.models import COMMITTED
+        from services.auth import actor
+
+        queued = []
+        for s in store.servers():
+            if state.phase(s.id) in COMMITTED:
+                r = supervisor.enqueue("stop", s.id, requested_by=actor(self._user))
+                if r.get("ok"):
+                    queued.append(s.name)
+        return {"ok": True, "queued": queued}

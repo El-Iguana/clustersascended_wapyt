@@ -76,6 +76,8 @@ def run(job: dict, log) -> str:
             return f"{server.name}: unchanged since the last backup."
         return backups.create(server, cluster, params.get("kind") or "manual", log,
                               note=params.get("note") or "", keep=params.get("keep"))["path"]
+    if kind == "add_map":
+        return add_map(params, log, job)
     if kind == "restore":
         return restore(server_id, int(params["backup_id"]), log, job)
     if kind == "warned_restart":
@@ -548,6 +550,85 @@ def warned_restart(server_id: str, log, job: dict | None, warn: list, message: s
 
 
 WARN_UNIT = 1.0   # tests shorten the countdown
+
+
+# -- adding a map --------------------------------------------------------------
+
+def add_map(p: dict, log, job: dict | None = None) -> str:
+    """The wizard's job (engine/addmap.py plans it). Every map must be stopped."""
+    from engine import addmap
+    from engine.models import Server
+
+    job_id = (job or {}).get("id")
+    busy = addmap.busy_maps()
+    if busy:
+        raise Refused(f"Stop every map first (still running or busy: {', '.join(busy)}).")
+    settings = store.host_settings()
+    owner = f"{settings.puid}:{settings.pgid}"
+    install, saved = Path(p["install"]), Path(p["saved"])
+    flag = abort_flag(p["server_id"])
+    created = False
+    try:
+        set_stage(job_id, "preparing", "Making the map's folders")
+        addmap._mkdirs([str(install), str(saved)], owner)
+        log(f"Folders: {install} and {saved}.")
+        if p["source"] != "download":
+            total = int(p.get("source_bytes") or 0)
+            log(f"Copying the game files from {p['source_path']} ({total / 1024 ** 3:.1f} GiB).")
+
+            def progress(done: int, total_bytes: int) -> None:
+                gib = 1024 ** 3
+                set_stage(job_id, "copying",
+                          f"Copying game files: {done / gib:.1f} of {total_bytes / gib:.1f} GiB")
+
+            addmap._copy(p["source_path"], str(install), total, progress, flag)
+            log("Game files copied.")
+        server = Server(p["server_id"], p["cluster"], p["name"], p["map_name"], p["session"],
+                        f"asa-{p['server_id']}", p["game_port"], p["rcon_port"], str(install), str(saved),
+                        priority=p["priority"], autostart=False, desired="stopped")
+        store.save_server(server)
+        created = True
+        cluster = store.cluster(p["cluster"])
+        eff = effective(server, cluster)
+        if p["source"] == "download":
+            log("Downloading ASA with SteamCMD on the first boot (about 13 GiB; this takes a while).")
+            start(server.id, log, check="start", timeout_s=settings.update_timeout_s, update_pass=True, job=job)
+            built = steam.installed_build(str(install))
+            if not built:
+                raise RuntimeError("The first boot did not leave an ASA install behind.")
+            log(f"Installed build {built}.")
+            stop(server.id, log, reason="first boot done")
+        else:
+            set_stage(job_id, "preparing", "Creating the map's container")
+            ensure_container(server, cluster, eff, settings, log)
+        if p.get("start_after"):
+            _desire(server.id, "running")
+            return start(server.id, log, job=job)
+        return f"{server.name} was added to {cluster.name}. Start it from the dashboard."
+    except BaseException:
+        log("Adding the map failed; removing what was made.")
+        if created:
+            try:
+                info = podman.inspect(f"asa-{p['server_id']}")
+                if info and is_managed(info):
+                    if (info.get("State") or {}).get("Running"):
+                        stop(p["server_id"], log, reason="failed add", save=False)
+                    podman.remove(f"asa-{p['server_id']}")
+            except Exception as exc:  # noqa: BLE001
+                log(f"Removing the container failed: {exc}")
+            store.conn().execute("DELETE FROM servers WHERE id=?", (p["server_id"],))
+            store.export_config()
+        _remove_dirs([str(install.parent), str(saved.parent)], log)
+        raise
+
+
+def _remove_dirs(paths: list[str], log) -> None:
+    import subprocess
+
+    script = " ; ".join(f'rm -rf "{d}"' for d in paths)
+    cp = subprocess.run([podman.binary(), "unshare", "sh", "-c", script], capture_output=True, text=True, timeout=600)
+    if cp.returncode != 0:
+        log(f"Could not remove {', '.join(paths)}: {(cp.stderr or '').strip()[:200]}")
 
 
 # -- updates ------------------------------------------------------------------
