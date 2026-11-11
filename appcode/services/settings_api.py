@@ -64,3 +64,20 @@ class SettingsApi:
                 r = supervisor.enqueue("restart", s.id, requested_by=actor(self._user))
                 (queued if r.get("ok") else errors).append(s.name if r.get("ok") else r.get("error"))
         return {"ok": not errors, "queued": queued, "error": " ".join(errors)}
+
+    def stacks(self, cluster_id: str) -> dict:
+        from engine import views
+
+        data = views.stacks_detail(str(cluster_id))
+        return {"ok": True, **data} if data else {"ok": False, "error": "Unknown cluster."}
+
+    def save_stacks(self, cluster_id: str, items: dict) -> dict:
+        from engine import store, views
+        from services.auth import actor
+
+        try:
+            result = views.save_stacks(str(cluster_id), dict(items or {}))
+        except views.Invalid as exc:
+            return {"ok": False, "error": str(exc)}
+        store.audit(actor(self._user), "stack sizes", str(cluster_id), {"count": result["count"]})
+        return {"ok": True, **result}

@@ -363,6 +363,14 @@ def import_game(cluster_id: str) -> dict:
     servers = store.servers(c.id)
     shared, own = game_settings.import_from_maps(c, servers)
     c.game = shared
+    found = []
+    for s in servers:
+        try:
+            found.append(game_settings.read_stacks(game_settings._read(game_settings.config_dir(s) / "Game.ini")))
+        except OSError:
+            found.append({})
+    if found and any(found) and all(f == found[0] for f in found):
+        c.stacks = found[0]
     store.save_cluster(c)
     for s in servers:
         o = dict(s.overrides or {})
@@ -483,3 +491,45 @@ def pin_backup(backup_id: int, pinned: bool) -> None:
     if store.backup(backup_id) is None:
         raise Invalid("No such backup.")
     store.set_backup(backup_id, pinned=1 if pinned else 0)
+
+
+
+# -- per-item stack sizes -------------------------------------------------------
+
+_ITEM_CLASS = re.compile(r"^[A-Za-z0-9_]{3,120}_C$")
+MAX_STACK = 1_000_000
+
+
+def stacks_detail(cluster_id: str) -> Optional[dict]:
+    from engine import game_settings
+
+    c = store.cluster(cluster_id)
+    if c is None:
+        return None
+    multiplier = game_settings.effective(c).get("ItemStackSizeMultiplier", 1.0)
+    return {"managed": c.stacks is not None, "stacks": dict(c.stacks or {}), "multiplier": multiplier,
+            "restart_needed": _running_names(c.id)}
+
+
+def save_stacks(cluster_id: str, items: dict) -> dict:
+    """{item class: max quantity}; an empty value removes the item (its normal stack applies)."""
+    c = store.cluster(cluster_id)
+    if c is None:
+        raise Invalid("Unknown cluster.")
+    out = {}
+    for item_class, raw in (items or {}).items():
+        item_class = str(item_class).strip()
+        if raw in (None, "", 0, "0"):
+            continue
+        if not _ITEM_CLASS.match(item_class):
+            raise Invalid(f"Not an item class name: {item_class} (they end in _C).")
+        try:
+            qty = int(str(raw).strip())
+        except ValueError:
+            raise Invalid(f"{item_class}: a whole number, please.")
+        if not 1 <= qty <= MAX_STACK:
+            raise Invalid(f"{item_class}: between 1 and {MAX_STACK:,}.")
+        out[item_class] = qty
+    c.stacks = out
+    store.save_cluster(c)
+    return {"restart_needed": _running_names(c.id), "count": len(out)}

@@ -78,6 +78,13 @@ in `~/asa-cluster`). Full plan: `~/.claude/plans/tender-meandering-panda.md`.
   password and RCON come from its command line; MaxPlayers is `-WinLiveMaxPlayers`.
 - Mods: CurseForge ids in load order; friendly names in the `mods` table (typed by the user).
   A CurseForge API key (search, pictures) is a later option.
+- **Per-item stack sizes** (`cluster.stacks`, `services/ark_items.py`, `ui/stacks_card.py`): Game.ini
+  `ConfigOverrideItemMaxQuantity=(ItemClassString="…_C",Quantity=(MaxItemQuantity=N,bIgnoreMultiplier=true))`,
+  one line per item (the number is the exact stack). `None` = the app leaves those lines alone;
+  once saved the app owns all of them (`ark_ini.replace_all`). Items that stack to 1 (prime meat,
+  mutton, fertilizer) ignore the global multiplier. Cryopods are left out (stacking breaks them);
+  mutton overrides reportedly may not apply on servers; fertilizer is used a whole stack at a time.
+  Class names and ASA defaults were checked against the ARK wiki and wikily.gg (2026-11-11).
 - The "wild level" figure uses the wiki's ASE formula (30 × (offset × (difficulty − 0.5) + 0.5)):
   shown as "about"; unverified for ASA.
 

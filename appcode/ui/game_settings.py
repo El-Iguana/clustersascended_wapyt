@@ -14,6 +14,7 @@ from wapyt import FieldConfig, Form, FormConfig, FormFieldset, message
 from services.ark_settings import GROUPS, ORDER, PRESETS, SETTINGS, differs, preset, wild_level
 from services.settings_api import SettingsApi
 from ui.common import Listeners, attr, closest, esc, failed, spawn, toast
+from ui.stacks_card import StacksCard
 
 
 def official() -> dict:
@@ -54,6 +55,7 @@ class GameSettingsTab:
         self.form = None
         self.data: dict = {}
         self.dirty = False
+        self.stacks = None
 
     def mount(self) -> None:
         self.el.innerHTML = '<div id="ca-game"><div class="ca-empty">Loading…</div></div>'
@@ -61,6 +63,8 @@ class GameSettingsTab:
         spawn(self.load(), "game settings load")
 
     def unmount(self) -> None:
+        if self.stacks is not None:
+            self.stacks.unmount()
         self.listeners.clear()
         self.form = None
 
@@ -86,6 +90,12 @@ class GameSettingsTab:
         self.form.on_change(lambda _p: self._changed())
         self.form.on_submit(lambda values: spawn(self.save(values), "save game settings"))
         self._summary(result["values"])
+        holder = js.document.getElementById("ca-stacks-holder")
+        if holder:
+            if self.stacks is not None:
+                self.stacks.unmount()
+            self.stacks = StacksCard(holder, self.cluster_id)
+            self.stacks.mount()
 
     # -- rendering -----------------------------------------------------------
 
@@ -107,6 +117,7 @@ class GameSettingsTab:
             f'setting{"s" if len(m["overrides"]) != 1 else ""} for itself.</li>' for m in own)
         jump = "".join(f'<a href="#" data-jump="g-{gid}"><span class="mdi {icon}"></span> {esc(title)}</a>'
                        for gid, title, icon, _b in GROUPS)
+        jump += '<a href="#" data-jump="stacks"><span class="mdi mdi-package-variant-closed"></span> Stack sizes per item</a>'
         return f"""
 {intro}
 <section class="ca-card">
@@ -117,7 +128,8 @@ class GameSettingsTab:
 <div class="ca-game-bar"><span id="ca-game-summary" class="ca-sub"></span><nav class="ca-jump">{jump}</nav></div>
 {f'<ul class="ca-list ca-sub">{notes}</ul>' if notes else ''}
 <section class="ca-card ca-game-form"><div id="ca-game-form"></div></section>
-<div id="ca-game-after"></div>"""
+<div id="ca-game-after"></div>
+<div id="ca-stacks-holder"></div>"""
 
     def _summary(self, values: dict) -> None:
         el = js.document.getElementById("ca-game-summary")
@@ -141,7 +153,8 @@ class GameSettingsTab:
         if jump:
             event.preventDefault()
             # wapyt marks a fieldset with data-fieldset-id, not an id.
-            target = js.document.querySelector(f'[data-fieldset-id="{attr(jump, "data-jump")}"]')
+            target = (js.document.getElementById("ca-stacks") if attr(jump, "data-jump") == "stacks" else
+                      js.document.querySelector(f'[data-fieldset-id="{attr(jump, "data-jump")}"]'))
             view = js.document.getElementById("ca-view")
             bar = js.document.querySelector(".ca-game-bar")
             if target and view:

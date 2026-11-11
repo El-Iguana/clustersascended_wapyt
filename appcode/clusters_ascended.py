@@ -334,6 +334,12 @@ _CSS = """
 .ca-mapchoice.ca-picked{border-color:#38bdf8;background:#0f2a44;box-shadow:0 0 0 2px #38bdf855;}
 .ca-radios{display:flex;flex-direction:column;gap:8px;margin-top:8px;}
 .ca-radio{display:flex;gap:8px;align-items:center;color:#e5e7eb;}
+#ca-stacks{display:flex;flex-direction:column;gap:10px;}
+.ca-stack-filter{background:#0b1222;color:#e5e7eb;border:1px solid #334155;border-radius:6px;padding:5px 10px;font:inherit;}
+.ca-stacks-table td{vertical-align:middle;}
+.ca-stack-cat th{background:#0b1222 !important;color:#93c5fd;font-weight:600;padding-top:14px;}
+.ca-stack-in{width:120px;background:#0b1222;color:#e5e7eb;border:1px solid #334155;border-radius:6px;padding:4px 8px;font:inherit;}
+.ca-stack-in:not(:placeholder-shown){border-color:#38bdf8;}
 @media (max-width:700px){.ca-field{grid-template-columns:1fr;}.ca-help{grid-column:1;}.ca-page{padding:12px;}}
 """
 

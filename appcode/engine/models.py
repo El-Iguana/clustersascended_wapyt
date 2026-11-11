@@ -75,6 +75,9 @@ class Cluster:
     # Game settings (services/ark_settings.py keys) the maps share. None: the
     # app has never managed them and leaves the ini files alone.
     game: Optional[dict] = None
+    # Per-item stack sizes {item class: max quantity}, written to Game.ini as
+    # ConfigOverrideItemMaxQuantity lines. None: the app leaves those lines alone.
+    stacks: Optional[dict] = None
 
     def to_dict(self) -> dict:
         return asdict(self)

@@ -101,3 +101,52 @@ def _trim_blank(out: list) -> int:
     while end > 0 and not out[end - 1].strip():
         end -= 1
     return end
+
+
+def read_all(text: str, section: str, key: str) -> list[str]:
+    """Every value of a repeated ``key`` in ``[section]``, in order."""
+    target, want = section.lower(), key.lower()
+    out, current = [], None
+    for line in text.splitlines():
+        stripped = line.strip()
+        head = _header(stripped)
+        if head is not None:
+            current = head
+            continue
+        if current == target and "=" in stripped and not stripped.startswith((";", "#")):
+            k, _, value = stripped.partition("=")
+            if k.strip().lower() == want:
+                out.append(value.strip())
+    return out
+
+
+def replace_all(text: str, section: str, key: str, values: list[str]) -> str:
+    """Drop every ``key=`` line in ``[section]`` and add one line per value at its end."""
+    newline = "\r\n" if "\r\n" in text else "\n"
+    text = write(text, section, {}, remove=[key])
+    if not values:
+        return text
+    lines = text.splitlines() if text.strip() else []
+    target = section.lower()
+    current, start, end = None, None, None
+    for i, line in enumerate(lines):
+        head = _header(line.strip())
+        if head is not None:
+            if current == target and end is None:
+                end = i
+            current = head
+            if head == target and start is None:
+                start = i
+    additions = [f"{key}={v}" for v in values]
+    if start is None:
+        if lines and lines[-1].strip():
+            lines.append("")
+        lines += [f"[{section}]", *additions]
+    else:
+        stop = end if end is not None else len(lines)
+        insert = stop
+        while insert > start + 1 and not lines[insert - 1].strip():
+            insert -= 1
+        lines[insert:insert] = additions
+    result = newline.join(lines)
+    return result + newline if text.endswith(("\n", "\r\n")) or not text else result

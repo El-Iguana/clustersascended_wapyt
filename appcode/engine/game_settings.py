@@ -12,6 +12,7 @@ settings saved (``game is None``) is not written at all.
 """
 from __future__ import annotations
 
+import re
 import subprocess
 import tempfile
 import time
@@ -21,6 +22,28 @@ from engine import ark_ini, paths, podman, store
 from services.ark_settings import GAME_SECTION, GUS_SECTION, ORDER, SETTINGS, ini_value, is_default, normalize
 
 FILES = {"gus": "GameUserSettings.ini", "game": "Game.ini"}
+STACK_KEY = "ConfigOverrideItemMaxQuantity"
+_STACK = re.compile(r'ItemClassString\s*=\s*"([^"]+)".*?MaxItemQuantity\s*=\s*(\d+)', re.I)
+
+
+def stack_line(item_class: str, quantity: int) -> str:
+    """One Game.ini override; bIgnoreMultiplier makes the number the exact stack size."""
+    return (f'(ItemClassString="{item_class}",Quantity=(MaxItemQuantity={int(quantity)},'
+            f'bIgnoreMultiplier=true))')
+
+
+def parse_stack(value: str):
+    m = _STACK.search(value or "")
+    return (m.group(1), int(m.group(2))) if m else None
+
+
+def read_stacks(text: str) -> dict:
+    out = {}
+    for value in ark_ini.read_all(text, GAME_SECTION, STACK_KEY):
+        parsed = parse_stack(value)
+        if parsed:
+            out[parsed[0]] = parsed[1]
+    return out
 KEEP_BACKUPS = 10
 
 
@@ -89,7 +112,7 @@ def _same(a, b) -> bool:
     return abs(float(a) - float(b)) < 1e-9
 
 
-def render(text: str, file: str, values: dict) -> str:
+def render(text: str, file: str, values: dict, stacks: dict | None = None) -> str:
     """
     ``text`` with this file's managed keys set. A key already in the file is
     always rewritten with its value; a missing one is only added when it
@@ -107,7 +130,13 @@ def render(text: str, file: str, values: dict) -> str:
             if old is not None and _equal_text(key, old, new):
                 continue          # same value: leave the line exactly as it is
             changes[key] = new
-    return ark_ini.write(text, section, changes)
+    text = ark_ini.write(text, section, changes)
+    if file == "game" and stacks is not None:
+        # Managed: the app owns every override line (unchanged lines are left as they are).
+        wanted = [stack_line(c, q) for c, q in sorted(stacks.items())]
+        if read_stacks(text) != dict(stacks) or len(ark_ini.read_all(text, section, STACK_KEY)) != len(wanted):
+            text = ark_ini.replace_all(text, section, STACK_KEY, wanted)
+    return text
 
 
 def _equal_text(key: str, old: str, new: str) -> bool:
@@ -119,7 +148,7 @@ def _equal_text(key: str, old: str, new: str) -> bool:
 
 def apply(server, cluster, log) -> bool:
     """Write the map's ini files for its effective settings. True if anything changed."""
-    if cluster.game is None:
+    if cluster.game is None and cluster.stacks is None:
         return False
     values = effective(cluster, server)
     target_dir = config_dir(server)
@@ -130,7 +159,7 @@ def apply(server, cluster, log) -> bool:
             old = _read(path) if path.exists() else ""
         except OSError as exc:
             raise RuntimeError(f"Cannot read {path}: {exc}")
-        new = render(old, file, values)
+        new = render(old, file, values, cluster.stacks)
         if new == old:
             continue
         if old:
