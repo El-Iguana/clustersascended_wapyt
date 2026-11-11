@@ -68,6 +68,14 @@ MIGRATIONS = [
     ALTER TABLE jobs ADD COLUMN detail TEXT NOT NULL DEFAULT '';
     ALTER TABLE jobs ADD COLUMN attempt INTEGER NOT NULL DEFAULT 0;
     """,
+    # 5: schedules (nightly backups, daily restarts)
+    """
+    CREATE TABLE schedules (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, cluster TEXT NOT NULL, kind TEXT NOT NULL,
+        at TEXT NOT NULL, days TEXT NOT NULL DEFAULT '[0,1,2,3,4,5,6]', params TEXT NOT NULL DEFAULT '{}',
+        enabled INTEGER NOT NULL DEFAULT 1, last_run REAL, next_run REAL, last_result TEXT NOT NULL DEFAULT '',
+        UNIQUE(cluster, kind));
+    """,
 ]
 
 
@@ -283,6 +291,51 @@ def backups(server_id: Optional[str] = None, limit: int = 100) -> list[dict]:
         args.append(server_id)
     rows = conn().execute(sql + " ORDER BY created DESC LIMIT ?", (*args, limit)).fetchall()
     return [dict(r) for r in rows]
+
+
+def backup(backup_id: int) -> Optional[dict]:
+    row = conn().execute("SELECT * FROM backups WHERE id=?", (backup_id,)).fetchone()
+    return dict(row) if row else None
+
+
+def set_backup(backup_id: int, **fields) -> None:
+    cols = ", ".join(f"{k}=?" for k in fields)
+    conn().execute(f"UPDATE backups SET {cols} WHERE id=?", (*fields.values(), backup_id))
+
+
+def delete_backup_row(backup_id: int) -> None:
+    conn().execute("DELETE FROM backups WHERE id=?", (backup_id,))
+
+
+# -- schedules ----------------------------------------------------------------
+
+def schedules(cluster_id: Optional[str] = None) -> list[dict]:
+    sql, args = "SELECT * FROM schedules", []
+    if cluster_id:
+        sql += " WHERE cluster=?"
+        args.append(cluster_id)
+    out = []
+    for r in conn().execute(sql + " ORDER BY cluster, kind", args).fetchall():
+        d = dict(r)
+        d["days"] = json.loads(d["days"])
+        d["params"] = json.loads(d["params"])
+        d["enabled"] = bool(d["enabled"])
+        out.append(d)
+    return out
+
+
+def save_schedule(cluster_id: str, kind: str, at: str, days: list, params: dict, enabled: bool,
+                  next_run: Optional[float]) -> None:
+    conn().execute(
+        "INSERT INTO schedules(cluster, kind, at, days, params, enabled, next_run) VALUES(?, ?, ?, ?, ?, ?, ?) "
+        "ON CONFLICT(cluster, kind) DO UPDATE SET at=excluded.at, days=excluded.days, params=excluded.params, "
+        "enabled=excluded.enabled, next_run=excluded.next_run",
+        (cluster_id, kind, at, json.dumps(days), json.dumps(params), int(enabled), next_run))
+
+
+def set_schedule(schedule_id: int, **fields) -> None:
+    cols = ", ".join(f"{k}=?" for k in fields)
+    conn().execute(f"UPDATE schedules SET {cols} WHERE id=?", (*fields.values(), schedule_id))
 
 
 def recent_runs(server_id: str, since: float) -> list[dict]:

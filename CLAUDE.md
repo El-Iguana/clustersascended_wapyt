@@ -81,6 +81,27 @@ in `~/asa-cluster`). Full plan: `~/.claude/plans/tender-meandering-panda.md`.
 - The "wild level" figure uses the wiki's ASE formula (30 × (offset × (difficulty − 0.5) + 0.5)):
   shown as "about"; unverified for ASA.
 
+## Backups, restore and schedules (2026-11-11)
+
+- `engine/backups.py`: tar + zstd of `SavedArks/<MAP>` + `Config` under `podman unshare`,
+  verified (`zstd -t`), into `<cluster root>/Backups/<server>/`. **ASA's own history is left
+  out** (`*.arkrbf` every ~15 min, date-stamped `<MAP>_DD.MM.YYYY_HH.MM.SS.ark` every ~2 h,
+  `*_AntiCorruptionBackup.bak`): ASA rotates them while it runs, which failed tar ("File removed
+  before we read it"). The live `<MAP>.ark` (~95 MB → ~12 MB compressed) plus tribe files is
+  what a restore needs (with -usestore the survivors are in the .ark).
+- **ASA answers "World Saved" about a second before the file is written.** `save_world` waits
+  until the world file is newer than the request, then for the folder to be quiet, and tar
+  retries if a file changed while it read (exit 1).
+- Pruning per kind (`KEEP`; nightly keep comes from the schedule), pinned never pruned.
+- Restore (`lifecycle.restore`, lifecycle lane): save+stop if running → pre-restore backup →
+  `restore_files` (archive checked: only this map's world/Config, no `..`/absolute) moves the
+  current world to `Saved/.pre-restore-<ts>` (newest one kept) and unpacks → start again.
+  The app's game settings are rewritten into the restored ini at the next start, as always.
+- `engine/scheduler.py` (ticked by the poller): per cluster a nightly backup (default on,
+  04:00, keep 7, stopped maps unchanged since their last backup skipped) and a daily restart
+  (default off, 05:00, chat countdown 15/5/1 → `warned_restart` jobs through the start queue).
+  A restart missed by over an hour is skipped; a missed backup runs late.
+
 ## Layout
 
 ```
@@ -136,6 +157,6 @@ three timeouts mark podman degraded).
    sequential updates with pre-update backups, world backups. Cutover done 2026-11-11.
 3. Live ops: ✅ game settings (sliders, presets, per-map overrides) and named mods; still to do:
    console (log tail + RCON), players, add-map wizard.
-4. World backups and restore; files.
+4. ✅ World backups, restore, nightly backups and daily restarts (2026-11-11); files still to do.
 5. Schedules (restarts with warnings, backups, update checks), memory history charts.
 

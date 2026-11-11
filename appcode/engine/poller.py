@@ -68,6 +68,16 @@ def tick(list_containers: bool = True, now: float | None = None) -> None:
         _update(server, clusters.get(server.cluster), now)
     _watchdog(now)
     _steam_check(now)
+    _schedules(now)
+
+
+def _schedules(now: float) -> None:
+    from engine import scheduler
+
+    try:
+        scheduler.tick(now)
+    except Exception as exc:  # noqa: BLE001 - a schedule must not stop the poller
+        print(f"[clusters-ascended] schedules: {exc!r}", flush=True)
 
 
 STEAM_EVERY_S = 1800

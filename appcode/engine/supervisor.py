@@ -29,6 +29,7 @@ from engine import admission, state, store
 LANES = ("lifecycle", "stop", "io")
 KIND_LANE = {"start": "lifecycle", "restart": "lifecycle", "make_room_start": "lifecycle",
              "adopt": "lifecycle", "rollback": "lifecycle", "update": "lifecycle",
+             "restore": "lifecycle", "warned_restart": "lifecycle",
              "stop": "stop", "backup": "io"}
 ACTIVE = ("queued", "running")
 
@@ -105,6 +106,11 @@ def enqueue(kind: str, server_id: str, requested_by: str = "admin", params: dict
         if kind == "backup":
             busy = [j for j in store.jobs(limit=200, states=ACTIVE)
                     if j["server"] == server_id and j["kind"] == "backup"]
+        active_kinds = {j["kind"] for j in store.jobs(limit=200, states=ACTIVE) if j["server"] == server_id}
+        if kind == "restore" and "backup" in active_kinds:
+            return {"ok": False, "error": f"{server.name} is being backed up; restore when it is done."}
+        if kind == "backup" and "restore" in active_kinds:
+            return {"ok": False, "error": f"{server.name} is being restored; back up when it is done."}
         if kind != "stop" and busy:
             return {"ok": False, "error": f"{server.name} already has a {busy[0]['kind']} job "
                                           f"{busy[0]['state']}."}
@@ -146,7 +152,7 @@ def enqueue(kind: str, server_id: str, requested_by: str = "admin", params: dict
             "decision": decision.to_dict() if decision else None}
 
 
-CANCELLABLE = frozenset({"start", "restart", "make_room_start", "update"})
+CANCELLABLE = frozenset({"start", "restart", "make_room_start", "update", "warned_restart"})
 
 
 def cancel(job_id: int) -> dict:

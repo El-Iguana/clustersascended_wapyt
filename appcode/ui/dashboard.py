@@ -23,8 +23,9 @@ STAGES = {
     "preparing": "Getting ready", "loading": "Loading the world", "verifying": "Checking it answers",
     "settling": "Settling", "measuring": "Measuring memory", "retrying": "Retrying",
     "stopping": "Saving and stopping", "making_room": "Making room", "backing_up": "Backing up",
+    "restoring": "Unpacking the backup", "warning": "Counting down in chat",
 }
-CANCELLABLE = ("start", "restart", "make_room_start", "update")
+CANCELLABLE = ("start", "restart", "make_room_start", "update", "warned_restart")
 
 # Map colours for the memory bar, by position in the cluster list.
 _COLOURS = ("#38bdf8", "#a78bfa", "#34d399", "#f472b6", "#fbbf24", "#60a5fa", "#fb923c", "#2dd4bf")
@@ -140,7 +141,8 @@ class DashboardView:
     def _queue(self, queue: list) -> str:
         rows = []
         for i, j in enumerate(queue, start=1):
-            what = j["kind"].replace("make_room_start", "make room and start").replace("_", " ")
+            what = (j["kind"].replace("make_room_start", "make room and start")
+                    .replace("warned_restart", "restart with a countdown").replace("_", " "))
             stage = STAGES.get(j.get("stage") or j["state"], j.get("stage") or j["state"])
             tries = f" · try {j['attempt']}" if (j.get("attempt") or 0) > 1 else ""
             detail = esc(j.get("detail") or "")

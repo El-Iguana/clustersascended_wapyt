@@ -58,6 +58,8 @@ def apply(compose_path: str, cluster_name: str = "", actor: str = "admin") -> di
                 store.update_run(run, ready_mem=memlearn.gb_to_bytes(gb), stopped_at=time.time() - 86400,
                                  end_reason="imported reading")
             seeded[s.id] = readings[-5:]
+    from engine import scheduler
+    scheduler.ensure_defaults()
     store.audit(actor, "import", plan.cluster.id, {"compose": str(compose_path), "copy": str(copy),
                                                    "servers": [s.id for s in plan.servers]})
     return {"ok": True, "cluster": plan.cluster.id, "servers": [s.id for s in plan.servers],

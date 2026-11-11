@@ -27,6 +27,9 @@ def cluster_env(data_dir, fake_proc, tmp_path, monkeypatch):
     monkeypatch.setenv("CA_PODMAN", str(FAKES / "podman"))
     monkeypatch.setenv("FAKE_PODMAN_STATE", str(state_dir))
     monkeypatch.setattr(lifecycle, "POLL_S", 0.05)
+    from engine import backups
+    monkeypatch.setattr(backups, "QUIET_S", 0)
+    monkeypatch.setattr(backups, "SAVE_LAND_S", 1)
     monkeypatch.setattr(poller, "TICK_S", 0.05)
     monkeypatch.setattr(poller, "LIST_EVERY", 1)
     # Fresh live state per test.

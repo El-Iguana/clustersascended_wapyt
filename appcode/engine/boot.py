@@ -16,6 +16,8 @@ def start_engine() -> None:
             return
         store.conn()
         supervisor.recover()
+        from engine import scheduler
+        scheduler.ensure_defaults()
         try:
             poller.tick()   # a first reading before any request arrives
         except Exception as exc:  # noqa: BLE001

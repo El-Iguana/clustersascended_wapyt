@@ -5,6 +5,7 @@ Server only; the BFFs call these so the rules are tested without a browser.
 from __future__ import annotations
 
 import re
+import time
 from typing import Optional
 
 from engine import lifecycle, podman, state, steam, store, watchdog
@@ -418,3 +419,67 @@ def name_mod(mod_id: str, name: str) -> None:
     if len(name) > 80:
         raise Invalid("Keep the name under 80 characters.")
     store.set_mod_name(str(mod_id), name)
+
+
+# -- backups and schedules ----------------------------------------------------
+
+def backups_detail(cluster_id: str) -> Optional[dict]:
+    import shutil
+
+    c = store.cluster(cluster_id)
+    if c is None:
+        return None
+    maps = []
+    total = 0
+    for s in store.servers(c.id):
+        rows = store.backups(s.id, 200)
+        total += sum(b["size"] for b in rows)
+        maps.append({"id": s.id, "name": s.name, "phase": state.phase(s.id), "backups": rows})
+    try:
+        usage = shutil.disk_usage(c.root_dir)
+        disk = {"free": usage.free, "total": usage.total}
+    except OSError:
+        disk = None
+    return {"cluster": {"id": c.id, "name": c.name}, "schedules": store.schedules(c.id), "maps": maps,
+            "total": total, "disk": disk}
+
+
+def save_schedule(cluster_id: str, kind: str, values: dict) -> None:
+    from engine import scheduler
+
+    if store.cluster(cluster_id) is None:
+        raise Invalid("Unknown cluster.")
+    if kind not in scheduler.DEFAULTS:
+        raise Invalid("Unknown schedule.")
+    at = str(values.get("at") or scheduler.DEFAULTS[kind]["at"]).strip()
+    try:
+        scheduler.parse_at(at)
+    except ValueError as exc:
+        raise Invalid(str(exc))
+    days = sorted({int(d) for d in values.get("days") or scheduler.ALL_DAYS if 0 <= int(d) <= 6})
+    if not days:
+        raise Invalid("Pick at least one day.")
+    params = dict(scheduler.DEFAULTS[kind]["params"])
+    if kind == "backup":
+        params["keep"] = _int(values.get("keep", 7), "Backups to keep", 1, 60)
+    else:
+        warn = values.get("warn") or [15, 5, 1]
+        if isinstance(warn, str):
+            warn = [w for w in re.split(r"[\s,]+", warn) if w]
+        try:
+            warn = sorted({int(w) for w in warn if 0 < int(w) <= 60}, reverse=True)
+        except ValueError:
+            raise Invalid("Warnings are minutes, like 15, 5, 1.")
+        params["warn"] = warn or [5]
+        message = str(values.get("message") or "Daily restart").strip()[:60]
+        if not re.match(r"^[\w .,!'-]*$", message):
+            raise Invalid("Keep the restart message to letters, digits and simple punctuation.")
+        params["message"] = message
+    store.save_schedule(cluster_id, kind, at, days, params, bool(values.get("enabled")),
+                        scheduler.next_run(at, days, time.time()))
+
+
+def pin_backup(backup_id: int, pinned: bool) -> None:
+    if store.backup(backup_id) is None:
+        raise Invalid("No such backup.")
+    store.set_backup(backup_id, pinned=1 if pinned else 0)

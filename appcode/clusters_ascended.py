@@ -286,6 +286,24 @@ _CSS = """
 .ca-qbody{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;}
 .ca-qbtns{display:flex;gap:6px;}
 .ca-cluster-head .ca-btn{padding:3px 10px;margin-right:6px;}
+#ca-backups{display:flex;flex-direction:column;gap:16px;}
+.ca-sched{display:flex;flex-direction:column;gap:10px;}
+.ca-sched-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;color:#cbd5e1;}
+.ca-sched input[type=time],.ca-sched input[type=number],.ca-sched input:not([type]){background:#0b1222;color:#e5e7eb;
+  border:1px solid #334155;border-radius:6px;padding:5px 8px;font:inherit;color-scheme:dark;}
+.ca-sched input[type=number]{width:70px;}
+.ca-days{display:flex;gap:4px;flex-wrap:wrap;}
+.ca-day input{display:none;}
+.ca-day span{display:inline-block;padding:3px 9px;border:1px solid #334155;border-radius:999px;cursor:pointer;
+  font-size:12.5px;color:#94a3b8;}
+.ca-day input:checked+span{background:#1d4ed8;border-color:#2563eb;color:#fff;}
+.ca-switch-big{display:inline-flex;align-items:center;gap:8px;cursor:pointer;font-weight:600;}
+.ca-switch-big input{width:18px;height:18px;accent-color:#2563eb;}
+.ca-map-h{margin:16px 0 6px;font-size:15px;}
+.ca-star{font-size:18px;color:#64748b;}
+.ca-star.ca-on{color:#fbbf24;}
+.ca-row-btns{display:flex;gap:6px;justify-content:flex-end;}
+.ca-row-btns .ca-btn{padding:3px 10px;}
 @media (max-width:700px){.ca-field{grid-template-columns:1fr;}.ca-help{grid-column:1;}.ca-page{padding:12px;}}
 """
 

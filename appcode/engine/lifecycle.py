@@ -71,8 +71,16 @@ def run(job: dict, log) -> str:
                       job=job)
     if kind == "backup":
         server, cluster, _eff, _settings = _context(server_id)
+        if params.get("skip_unchanged") and backups.unchanged_since_last(server):
+            log(f"{server.name}'s world has not changed since its last backup; nothing to do.")
+            return f"{server.name}: unchanged since the last backup."
         return backups.create(server, cluster, params.get("kind") or "manual", log,
-                              note=params.get("note") or "")["path"]
+                              note=params.get("note") or "", keep=params.get("keep"))["path"]
+    if kind == "restore":
+        return restore(server_id, int(params["backup_id"]), log, job)
+    if kind == "warned_restart":
+        return warned_restart(server_id, log, job, params.get("warn") or [15, 5, 1],
+                              params.get("message") or "")
     raise RuntimeError(f"Unknown job kind {kind}")
 
 
@@ -466,6 +474,68 @@ def rollback(server_id: str, log) -> str:
     store.save_server(s)
     state.request_refresh()
     return f"{server.name} is back on its compose container (stopped)."
+
+
+# -- restore and warned restarts ----------------------------------------------
+
+def restore(server_id: str, backup_id: int, log, job: dict | None = None) -> str:
+    """
+    Put a backup back: save and stop the map, back up what it has now
+    (pre-restore), move the current world aside, unpack the backup, and start
+    the map again (through admission) if it was running.
+    """
+    server, cluster, _eff, _settings = _context(server_id)
+    b = store.backup(backup_id)
+    if b is None or b["server"] != server_id:
+        raise RuntimeError("That backup does not belong to this map.")
+    if not Path(b["path"]).is_file():
+        raise RuntimeError(f"The backup file is missing: {b['path']}")
+    job_id = (job or {}).get("id")
+    backups.check_archive(server, b["path"])
+    was_running = state.phase(server_id) in ("ready", "starting")
+    if was_running:
+        set_stage(job_id, "stopping", "Saving and stopping before the restore")
+        stop(server_id, log, reason="restore")
+    set_stage(job_id, "backing_up", "Backing up the current world first")
+    backups.create(server, cluster, "pre-restore", log, note=f"before restoring backup {backup_id}")
+    set_stage(job_id, "restoring", f"Unpacking {Path(b['path']).name}")
+    aside = backups.restore_files(server, b["path"], log)
+    log(f"Restored. The world it replaced is kept in {aside}.")
+    if was_running:
+        return start(server_id, log, job=job)
+    return f"{server.name} restored from {time.strftime('%b %d %H:%M', time.localtime(b['created']))}."
+
+
+def warned_restart(server_id: str, log, job: dict | None, warn: list, message: str = "") -> str:
+    """Count down in game chat, save, restart (the start goes through admission)."""
+    server, _cluster, eff, _settings = _context(server_id)
+    job_id = (job or {}).get("id")
+    if state.phase(server_id) != "ready":
+        return f"{server.name} is not running; nothing to restart."
+    flag = abort_flag(server_id)
+    marks = sorted({int(m) for m in warn if int(m) > 0}, reverse=True)
+    password = eff.get("admin_password") or ""
+    for i, minutes in enumerate(marks):
+        text = f"{message or 'Server restart'} in {minutes} minute{'s' if minutes != 1 else ''}."
+        try:
+            rcon.command(server.rcon_port, password, f"ServerChat {text}", timeout=10)
+            log(f"Warned players: {text}")
+        except rcon.RconError as exc:
+            log(f"Could not warn players ({exc}).")
+        following = marks[i + 1] if i + 1 < len(marks) else 0
+        set_stage(job_id, "warning", f"Restart in {minutes} min", None)
+        _pause(flag, (minutes - following) * 60 * WARN_UNIT, server_id)
+    try:
+        rcon.command(server.rcon_port, password, "ServerChat Restarting now. See you in a few minutes!", timeout=10)
+    except rcon.RconError:
+        pass
+    _desire(server_id, "running")
+    set_stage(job_id, "stopping", "Saving and stopping")
+    stop(server_id, log, reason="scheduled restart")
+    return start(server_id, log, check="restart", job=job)
+
+
+WARN_UNIT = 1.0   # tests shorten the countdown
 
 
 # -- updates ------------------------------------------------------------------

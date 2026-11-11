@@ -10,6 +10,7 @@ from __future__ import annotations
 import js
 
 from services.cluster_api import ClusterApi
+from ui.backups_tab import BackupsTab
 from ui.common import Listeners, closest, esc, failed, spawn, toast
 from ui.game_settings import GameSettingsTab
 from ui.mods_tab import ModsTab
@@ -17,7 +18,7 @@ from ui.mods_tab import ModsTab
 GiB = 1024 ** 3
 
 TABS = (("", "Maps & basics", "mdi-map-outline"), ("settings", "Game settings", "mdi-tune"),
-        ("mods", "Mods", "mdi-puzzle-outline"))
+        ("mods", "Mods", "mdi-puzzle-outline"), ("backups", "Backups & restarts", "mdi-backup-restore"))
 
 
 def _val(name: str) -> str:
@@ -29,7 +30,7 @@ class ClusterView:
     def __init__(self, container, cluster_id: str, tab: str = "") -> None:
         self.el = container
         self.cluster_id = cluster_id
-        self.tab = tab if tab in ("settings", "mods") else ""
+        self.tab = tab if tab in ("settings", "mods", "backups") else ""
         self.listeners = Listeners()
         self.child = None
 
@@ -50,6 +51,9 @@ class ClusterView:
             self.child.mount()
         elif self.tab == "mods":
             self.child = ModsTab(body, self.cluster_id)
+            self.child.mount()
+        elif self.tab == "backups":
+            self.child = BackupsTab(body, self.cluster_id)
             self.child.mount()
         else:
             self.listeners.on(self.el, "click", self._on_click)

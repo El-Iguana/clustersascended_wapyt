@@ -193,7 +193,9 @@ class ServerView:
             f"<tr><td>{_clock(b['created'])}</td><td>{esc(b['kind'])}</td><td>{b['size'] / GiB:.2f} GiB</td>"
             f"<td>{esc(b.get('build_id') or '')}</td><td class='ca-summary'><code>{esc(b['path'])}</code></td></tr>"
             for b in d["backups"]) or '<tr><td colspan="5" class="ca-empty">No backups yet.</td></tr>'
-        return (f'<section class="ca-card ca-table-wrap"><h2 class="ca-pad">Backups</h2><table class="ca-table">'
+        link = (f'<a class="ca-pad ca-sub" href="#/cluster/{esc(d["cluster"]["id"])}/backups">'
+                f'Restore, keep or delete backups, and set the nightly backup →</a>')
+        return (f'<section class="ca-card ca-table-wrap"><h2 class="ca-pad">Backups</h2>{link}<table class="ca-table">'
                 f"<thead><tr><th>When</th><th>Kind</th><th>Size</th><th>Build</th><th>File</th></tr></thead>"
                 f"<tbody>{rows}</tbody></table></section>")
 
