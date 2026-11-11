@@ -8,7 +8,8 @@ Conventions from the sibling wapyt apps:
 * Import *names* from service modules, never ``from services import x``.
 * DOM misses come back as ``JsNull``, which is falsy but not ``None``.
 
-Routes (URL hash): ``#/`` dashboard, ``#/jobs[/<id>]``, ``#/host``, ``#/import``.
+Routes (URL hash): ``#/`` dashboard, ``#/cluster/<id>``, ``#/map/<id>``,
+``#/jobs[/<id>]``, ``#/host``, ``#/import``.
 """
 from __future__ import annotations
 
@@ -25,11 +26,13 @@ from wapyt import (
     ToolbarText,
 )
 
+from ui.cluster_view import ClusterView
 from ui.common import APPLICATION, Listeners, by_id, spawn
 from ui.dashboard import DashboardView
 from ui.host import HostView
 from ui.import_view import ImportView
 from ui.jobs import JobsView
+from ui.server_view import ServerView
 
 # pytincture's MainWindow detection only knows dhxpyt; without this the app
 # starts with HTTP 422.
@@ -119,11 +122,16 @@ class ClustersAscended(MainWindow):
             self._view = HostView(container)
         elif page == "import":
             self._view = ImportView(container)
+        elif page == "map" and len(parts) > 1:
+            self._view = ServerView(container, parts[1])
+        elif page == "cluster" and len(parts) > 1:
+            self._view = ClusterView(container, parts[1])
         else:
             page = "dashboard"
             self._view = DashboardView(container)
+        nav = {"map": "dashboard", "cluster": "dashboard"}.get(page, page)
         try:
-            self.toolbar.set_active(page) if hasattr(self.toolbar, "set_active") else None
+            self.toolbar.set_active(nav, True)
         except Exception:  # noqa: BLE001 - cosmetic
             pass
         self._view.mount()
@@ -202,12 +210,36 @@ _CSS = """
 .ca-form{display:flex;flex-direction:column;gap:14px;max-width:760px;}
 .ca-field{display:grid;grid-template-columns:220px 1fr;gap:4px 16px;align-items:center;}
 .ca-field-label{font-weight:500;}
+.ca-field-top{align-items:start;}
+.ca-field-top .ca-field-label{padding-top:6px;}
 .ca-field-input{display:flex;align-items:center;gap:8px;}
-.ca-field input{flex:1;min-width:0;background:#0b1222;color:#e5e7eb;border:1px solid #334155;border-radius:6px;
+.ca-field input{flex:1;min-width:0;width:0;background:#0b1222;color:#e5e7eb;border:1px solid #334155;border-radius:6px;
   padding:6px 10px;font:inherit;}
 .ca-field input:focus{outline:none;border-color:#38bdf8;}
 .ca-unit{color:#94a3b8;min-width:28px;}
 .ca-help{grid-column:2;color:#94a3b8;font-size:12px;}
+.ca-plain{color:inherit !important;text-decoration:none;}
+.ca-plain:hover{text-decoration:underline;}
+.ca-chips{display:flex;gap:6px;flex-wrap:wrap;}
+.ca-chips:empty{display:none;}
+.ca-chip{font-size:11.5px;padding:1px 8px;border-radius:999px;border:1px solid #334155;color:#cbd5e1;}
+.ca-chip-warn{border-color:#92400e;color:#fcd34d;}
+.ca-two{display:grid;grid-template-columns:repeat(auto-fit,minmax(420px,1fr));gap:16px;align-items:start;}
+.ca-two .ca-form{max-width:none;}
+.ca-status-head{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:8px;}
+.ca-note{color:#cbd5e1;font-size:13px;margin-top:6px;}
+.ca-pad{padding:14px 16px 4px;}
+.ca-list{margin:8px 0 0;padding-left:18px;}
+.ca-field select{flex:1;min-width:0;background:#0b1222;color:#e5e7eb;border:1px solid #334155;border-radius:6px;padding:6px 8px;font:inherit;}
+.ca-mods{display:flex;flex-direction:column;gap:8px;}
+.ca-mod-list{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:4px;}
+.ca-mod-list li{display:flex;align-items:center;gap:8px;background:#0b1222;border:1px solid #1e293b;border-radius:6px;padding:3px 8px;}
+.ca-mod-n{color:#64748b;width:22px;font-size:12px;}
+.ca-mod-btns{margin-left:auto;display:flex;gap:2px;}
+.ca-icon{background:none;border:0;color:#94a3b8;cursor:pointer;padding:2px 6px;border-radius:4px;font-size:11px;}
+.ca-icon:hover{background:#1f2937;color:#e5e7eb;}
+.ca-mod-add{display:flex;gap:8px;}
+.ca-mod-add input{flex:1;min-width:0;background:#0b1222;color:#e5e7eb;border:1px solid #334155;border-radius:6px;padding:6px 10px;font:inherit;}
 @media (max-width:700px){.ca-field{grid-template-columns:1fr;}.ca-help{grid-column:1;}.ca-page{padding:12px;}}
 """
 

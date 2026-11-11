@@ -28,12 +28,14 @@ def main() -> int:
         page.wait_for_selector("#ca-dash .ca-card, #ca-dash .ca-cluster", timeout=120_000)
         page.screenshot(path=str(OUT / "dashboard.png"), full_page=True)
         for route, selector in (("#/jobs", "#ca-jobs .ca-table, #ca-jobs .ca-empty"),
+                                ("#/map/genesis1", "#ca-map #ca-map-status"),
+                                ("#/cluster/oldmangan", "#ca-cluster .ca-form"),
                                 ("#/host", "#ca-host .ca-form"),
                                 ("#/import", "#ca-import .ca-form")):
             page.evaluate(f"location.hash = '{route}'")
             page.wait_for_selector(selector, timeout=30_000)
             page.wait_for_timeout(800)
-            page.screenshot(path=str(OUT / f"{route.strip('#/')}.png"), full_page=True)
+            page.screenshot(path=str(OUT / f"{route.strip('#/').replace('/', '-')}.png"), full_page=True)
         page.evaluate("location.hash = '#/'")
         page.wait_for_selector("#ca-dash .ca-host", timeout=30_000)
         browser.close()

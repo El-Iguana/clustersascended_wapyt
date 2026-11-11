@@ -18,7 +18,7 @@ class HostApi:
 
     def overview(self) -> dict:
         """Host memory, every cluster with its maps, previews, and active jobs."""
-        from engine import admission, podman, state, store, supervisor
+        from engine import admission, podman, state, store, supervisor, views
 
         snap = state.snapshot()
         s = snap.settings
@@ -47,6 +47,7 @@ class HostApi:
                     "need": v.need, "actual": v.actual, "peak": lv.peak,
                     "mem": lv.mem, "players": lv.players, "started_at": lv.started_at or None,
                     "ready_at": lv.ready_at, "hang": lv.hang,
+                    "flags": views.quick_flags(srv, c, s),
                     "preview": preview,
                     "job": {"id": job["id"], "kind": job["kind"], "state": job["state"]} if job else None,
                 })
@@ -55,6 +56,7 @@ class HostApi:
         return {
             "ok": True,
             "podman_degraded": podman.degraded,
+            "watchdog": views.watchdog_status(),
             "updated_at": state.updated_at(),
             "host": {
                 "mem_total": host.mem_total, "mem_available": host.mem_available,
@@ -82,9 +84,12 @@ class HostApi:
         from services.auth import actor
 
         current = store.host_settings().to_dict()
-        gib_fields = ("swap_allowance", "reserve", "default_need")
+        gib_fields = ("swap_allowance", "reserve", "default_need", "warn_free", "crit_free")
         int_fields = ("max_running", "settle_s", "ready_timeout_s", "rcon_timeout_s",
-                      "stop_timeout_s", "save_timeout_s")
+                      "stop_timeout_s", "save_timeout_s", "update_timeout_s", "crit_sustain_s",
+                      "watchdog_cooldown_s")
+        float_fields = ("need_margin", "psi_crit")
+        bool_fields = ("watchdog_enabled", "crash_restart")
         try:
             for key in gib_fields:
                 if key in values and values[key] not in (None, ""):
@@ -92,10 +97,16 @@ class HostApi:
             for key in int_fields:
                 if key in values and values[key] not in (None, ""):
                     current[key] = int(values[key])
-            if values.get("need_margin") not in (None, ""):
-                current["need_margin"] = float(values["need_margin"])
+            for key in float_fields:
+                if key in values and values[key] not in (None, ""):
+                    current[key] = float(values[key])
+            for key in bool_fields:
+                if key in values:
+                    current[key] = values[key] in (True, "true", "on", "1", 1)
         except (TypeError, ValueError):
             return {"ok": False, "error": "Numbers only, please."}
+        if current["crit_free"] >= current["warn_free"]:
+            return {"ok": False, "error": "The critical level must be below the warning level."}
         if current["max_running"] < 1 or current["reserve"] < 0 or current["swap_allowance"] < 0:
             return {"ok": False, "error": "Max running must be at least 1 and sizes cannot be negative."}
         if not 1.0 <= current["need_margin"] <= 2.0:

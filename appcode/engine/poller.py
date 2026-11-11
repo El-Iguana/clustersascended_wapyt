@@ -6,6 +6,7 @@ records runs (start, ready, peak memory, end) and polls player lists.
 """
 from __future__ import annotations
 
+import os
 import threading
 import time
 from datetime import datetime, timezone
@@ -21,6 +22,11 @@ _followers: dict[str, logtail.Follower] = {}
 _containers: dict = {}
 _stop = threading.Event()
 _thread: threading.Thread | None = None
+
+
+def container(name: str) -> dict | None:
+    """The last listing's entry for a container (no podman call)."""
+    return _containers.get(name)
 
 
 def start() -> None:
@@ -61,6 +67,17 @@ def tick(list_containers: bool = True, now: float | None = None) -> None:
     for server in store.servers():
         _update(server, clusters.get(server.cluster), now)
     _watchdog(now)
+    _steam_check(now)
+
+
+STEAM_EVERY_S = 1800
+
+
+def _steam_check(now: float) -> None:
+    from engine import steam
+
+    if store.servers() and os.getenv("CA_STEAM_CHECK", "on") != "off":
+        steam.refresh_async(STEAM_EVERY_S)
 
 
 def _watchdog(now: float) -> None:

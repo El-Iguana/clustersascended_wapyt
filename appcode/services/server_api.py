@@ -1,12 +1,12 @@
 """
-BFF: actions on a map. Every one goes through the engine's queue, which
-checks memory admission before anything starts.
+BFF: a map's page and its actions. Every action goes through the engine's
+queue, which checks memory admission before anything starts.
 """
 from __future__ import annotations
 
 from pytincture.dataclass import backend_for_frontend, bff_policy
 
-ACTIONS = ("start", "stop", "restart", "make_room_start")
+ACTIONS = ("start", "stop", "restart", "make_room_start", "adopt", "rollback", "update", "backup")
 
 
 @backend_for_frontend
@@ -15,13 +15,25 @@ class ServerApi:
     def __init__(self, _user: dict = None) -> None:
         self._user = _user or {}
 
-    def act(self, server_id: str, action: str) -> dict:
+    def act(self, server_id: str, action: str, params: dict = None) -> dict:
         from engine import supervisor
         from services.auth import actor
 
         if action not in ACTIONS:
             return {"ok": False, "error": f"Unknown action: {action}"}
-        return supervisor.enqueue(action, str(server_id), requested_by=actor(self._user))
+        clean = {}
+        p = dict(params or {})
+        if action == "update":
+            clean = {"force": bool(p.get("force")), "make_room": bool(p.get("make_room"))}
+        elif action == "backup":
+            clean = {"kind": "manual", "note": str(p.get("note") or "")[:200]}
+        return supervisor.enqueue(action, str(server_id), requested_by=actor(self._user), params=clean)
+
+    def detail(self, server_id: str) -> dict:
+        from engine import views
+
+        data = views.server_detail(str(server_id))
+        return {"ok": True, **data} if data else {"ok": False, "error": "Unknown map."}
 
     def preview(self, server_id: str) -> dict:
         """Would starting this map be admitted right now? With the breakdown."""
@@ -32,25 +44,25 @@ class ServerApi:
             return {"ok": False, "error": "Unknown server."}
         return {"ok": True, "decision": admission.admit(snap, "start", server_id, supervisor.pending()).to_dict()}
 
-    def update(self, server_id: str, values: dict) -> dict:
-        """Priority, need override (GiB, empty = learned) and autostart."""
-        from engine import store
-        from engine.models import GiB
+    def save(self, server_id: str, values: dict) -> dict:
+        from engine import store, views
         from services.auth import actor
 
-        s = store.server(str(server_id))
-        if s is None:
-            return {"ok": False, "error": "Unknown server."}
         try:
-            if "priority" in values:
-                s.priority = max(1, int(values["priority"]))
-            if "need_override" in values:
-                raw = values["need_override"]
-                s.need_override = int(float(raw) * GiB) if raw not in (None, "", 0, "0") else None
-            if "autostart" in values:
-                s.autostart = bool(values["autostart"])
-        except (TypeError, ValueError):
-            return {"ok": False, "error": "Numbers only, please."}
-        store.save_server(s)
-        store.audit(actor(self._user), "server settings", s.id, values)
+            result = views.save_server(str(server_id), dict(values or {}))
+        except views.Invalid as exc:
+            return {"ok": False, "error": str(exc)}
+        shown = {k: ("••••••" if "password" in k else v) for k, v in (values or {}).items()}
+        store.audit(actor(self._user), "map settings", str(server_id), shown)
+        return {"ok": True, **result}
+
+    def clear_hold(self, server_id: str) -> dict:
+        from engine import store, views
+        from services.auth import actor
+
+        try:
+            views.clear_hold(str(server_id))
+        except views.Invalid as exc:
+            return {"ok": False, "error": str(exc)}
+        store.audit(actor(self._user), "clear hold", str(server_id))
         return {"ok": True}

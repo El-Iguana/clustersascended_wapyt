@@ -37,6 +37,31 @@ def parse_latest(data: dict) -> Optional[str]:
         return None
 
 
+_inflight = threading.Event()
+
+
+def refresh_async(max_age_s: float) -> None:
+    """Look the latest build up in the background if the cache is older than ``max_age_s``."""
+    with _lock:
+        if time.time() - _cache["at"] < max_age_s or _inflight.is_set():
+            return
+        _inflight.set()
+
+    def run():
+        try:
+            latest_build(force=True)
+        finally:
+            _inflight.clear()
+
+    threading.Thread(target=run, name="ca-steam", daemon=True).start()
+
+
+def cached_latest() -> tuple[Optional[str], str, float]:
+    """What the last lookup found, without asking Steam (for the dashboard)."""
+    with _lock:
+        return _cache["build"], _cache["error"], _cache["at"]
+
+
 def latest_build(force: bool = False) -> tuple[Optional[str], str]:
     """``(build id, error)``; the error is "" when the lookup worked."""
     with _lock:

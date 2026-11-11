@@ -19,6 +19,7 @@ def data_dir(tmp_path, monkeypatch):
 
     d = tmp_path / "data"
     monkeypatch.setenv("CA_DATA_DIR", str(d))
+    monkeypatch.setenv("CA_STEAM_CHECK", "off")
     store.reset_thread_connection()
     yield d
     store.reset_thread_connection()

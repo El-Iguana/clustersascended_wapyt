@@ -60,6 +60,11 @@ class DashboardView:
             parts.append('<div class="ca-banner" data-kind="error"><span class="mdi mdi-alert"></span>'
                          "podman is not answering (Podman Desktop may be holding its database). "
                          "Readings come from the kernel; actions wait until podman answers.</div>")
+        wd = d.get("watchdog") or {}
+        if wd.get("level") in ("warn", "critical"):
+            kind = "error" if wd["level"] == "critical" else "warning"
+            parts.append(f'<div class="ca-banner" data-kind="{kind}"><span class="mdi mdi-memory"></span>'
+                         f'{esc(wd.get("message"))}</div>')
         parts.append(self._memory(d))
         if not d.get("clusters"):
             parts.append('<div class="ca-card ca-empty">No clusters yet. '
@@ -133,7 +138,7 @@ class DashboardView:
 <section class="ca-cluster">
   <div class="ca-cluster-head">
     <div>
-      <h2><span class="mdi mdi-hexagon-multiple-outline"></span> {esc(c["name"])}</h2>
+      <h2><span class="mdi mdi-hexagon-multiple-outline"></span> <a class="ca-plain" href="#/cluster/{esc(c["id"])}">{esc(c["name"])}</a></h2>
       <div class="ca-sub">ClusterId <code>{esc(c["cluster_id"])}</code> · transfer folder <code>{esc(c["transfer_dir"])}</code>
         · {mods} shared mods{(' · ' + ', '.join(limits)) if limits else ''}</div>
     </div>
@@ -167,6 +172,18 @@ class DashboardView:
         if s.get("hang"):
             uptime += ' · <span class="ca-warn">hang detected</span>'
 
+        flags = s.get("flags") or {}
+        chips = []
+        if flags.get("exists") and not flags.get("managed"):
+            chips.append('<span class="ca-chip" title="Adopt it on the map page">compose container</span>')
+        if flags.get("drift"):
+            chips.append('<span class="ca-chip ca-chip-warn">settings change at next start</span>')
+        if flags.get("update_available"):
+            chips.append('<span class="ca-chip ca-chip-warn">update available</span>')
+        if flags.get("autostart"):
+            chips.append('<span class="ca-chip">autostart</span>')
+        held = (f'<div class="ca-refusal"><span class="mdi mdi-pause-octagon-outline"></span> {esc(flags["held"])}</div>'
+                if flags.get("held") else "")
         preview = ""
         p = s.get("preview")
         if p and not p["ok"]:
@@ -201,7 +218,7 @@ class DashboardView:
 <article class="ca-server" style="--ca-colour:{colour}">
   <header>
     <div>
-      <h3>{esc(s["name"])}</h3>
+      <h3><a class="ca-plain" href="#/map/{esc(s["id"])}">{esc(s["name"])}</a></h3>
       <div class="ca-sub">{esc(s["map"])} · {esc(s["session"])} · port {s["game_port"]} · RCON {s["rcon_port"]} · priority {s["priority"]}</div>
     </div>
     <span class="ca-badge" data-kind="{kind}">{esc(label)}</span>
@@ -211,7 +228,9 @@ class DashboardView:
     <div><span class="ca-k">Memory</span> {mem}</div>
   </div>
   <div class="ca-sub">{esc(s["container"])}{uptime}</div>
+  <div class="ca-chips">{''.join(chips)}</div>
   {who}
+  {held}
   {preview}
   <div class="ca-actions">{''.join(buttons)}</div>
 </article>"""

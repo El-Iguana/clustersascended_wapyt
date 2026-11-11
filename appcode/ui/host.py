@@ -22,6 +22,17 @@ FIELDS = (
     ("rcon_timeout_s", "RCON timeout", "s", "After it advertises, RCON must answer within this.", False),
     ("save_timeout_s", "Save timeout", "s", "How long SaveWorld may take before stopping anyway.", False),
     ("stop_timeout_s", "Stop grace", "s", "How long ASA gets to exit before it is killed.", False),
+    ("update_timeout_s", "Update timeout", "s", "An update boot (download + first load) may take this long.", False),
+    ("watchdog_enabled", "Memory watchdog", "bool",
+     "Save and stop a map before the kernel's OOM killer acts.", False),
+    ("warn_free", "Warn below", "GiB", "Free RAM + free swap below this shows a warning.", True),
+    ("crit_free", "Act below", "GiB", "Below this (or at critical pressure), held for the time below, "
+     "the watchdog saves and stops a map: one still loading, else the least important.", True),
+    ("crit_sustain_s", "For at least", "s", "", False),
+    ("psi_crit", "Critical pressure", "%", "Share of time all tasks stalled on memory (PSI full avg10).", False),
+    ("watchdog_cooldown_s", "Between actions", "s", "", False),
+    ("crash_restart", "Restart after a crash", "bool",
+     "For app-owned maps with autostart on. Two crashes in 30 minutes hold it.", False),
 )
 
 
@@ -48,6 +59,13 @@ class HostView:
             value = s.get(key)
             if is_gib and value is not None:
                 value = round(value / GiB, 2)
+            if unit == "bool":
+                rows.append(
+                    f'<label class="ca-field"><span class="ca-field-label">{esc(label)}</span>'
+                    f'<span class="ca-field-input"><select name="{key}"><option value="true"{" selected" if value else ""}>On</option>'
+                    f'<option value="false"{"" if value else " selected"}>Off</option></select></span>'
+                    f'<span class="ca-help">{esc(help_text)}</span></label>')
+                continue
             rows.append(
                 f'<label class="ca-field"><span class="ca-field-label">{esc(label)}</span>'
                 f'<span class="ca-field-input"><input name="{key}" value="{esc(value)}" inputmode="decimal">'
@@ -67,7 +85,7 @@ class HostView:
     async def save(self) -> None:
         values = {}
         for key, *_ in FIELDS:
-            el = js.document.querySelector(f'#ca-host input[name="{key}"]')
+            el = js.document.querySelector(f'#ca-host [name="{key}"]')
             if el:
                 values[key] = str(el.value).strip()
         result = await HostApi().save_settings_async(values)

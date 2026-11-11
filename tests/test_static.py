@@ -46,11 +46,11 @@ def test_the_browser_never_imports_the_engine():
 
 
 def test_browser_modules_import_names_not_modules():
-    """`from services import x` boots the browser to a blank page."""
+    """`from services import x` (or `from ui import x`) boots the browser to a blank page."""
     for path in BROWSER:
         for module, node in _imports(path):
-            if module == "services" and isinstance(node, ast.ImportFrom):
-                pytest.fail(f"{path.name}: from services import …")
+            if module in ("services", "ui") and isinstance(node, ast.ImportFrom):
+                pytest.fail(f"{path.name}: from {module} import …")
 
 
 def test_bff_modules_import_the_engine_only_inside_methods():
