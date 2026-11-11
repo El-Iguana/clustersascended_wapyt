@@ -1,0 +1,28 @@
+# systemd --user unit for Clusters Ascended.
+#
+#   cp deploy/clusters-ascended.service ~/.config/systemd/user/
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now clusters-ascended
+#
+# Lingering must be on (loginctl enable-linger) so it starts at boot without a
+# login; it then brings back the maps marked autostart, one at a time,
+# through memory admission.
+
+[Unit]
+Description=Clusters Ascended (ARK: Survival Ascended cluster manager)
+After=default.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/development/clustersascended_wapyt
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=%h/.local/bin/uv run --frozen python service.py
+Restart=on-failure
+RestartSec=5
+# Game containers started by the app leave their podman `conmon` in this
+# unit's cgroup; stop only the app itself, so restarting it never kills a map.
+KillMode=process
+TimeoutStopSec=20
+
+[Install]
+WantedBy=default.target
