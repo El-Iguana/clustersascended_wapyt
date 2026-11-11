@@ -1,39 +1,94 @@
 # Clusters Ascended
 
-Define ARK: Survival Ascended clusters, add maps to them, and run them on one
-host without running it out of memory. Built on
-[pytincture](https://pypi.org/project/pytincture/) and wapyt (Python in the
-browser).
+Run your own **ARK: Survival Ascended** cluster at home without being a
+server administrator. Clusters Ascended is a web app for one machine: you
+define a cluster, add maps to it, and manage everything from sliders,
+switches and buttons, while the app makes sure the machine never runs out
+of memory.
 
-- **The cluster comes first.** A cluster carries the ClusterId, the shared
-  transfer folder and the settings its maps share (mods, launch flags,
-  passwords). Maps are added to a cluster; a single map is a one-map cluster.
-- **Memory admission control.** Nothing starts unless the host can hold it:
-  `projected = Σ needs of running maps + other use on the host + this map's
-  need` must fit `RAM + swap allowance − reserve`, at most N maps run at once,
-  and the bytes must physically be free. A refusal says why and offers to make
-  room by saving and stopping the least important map.
-- **One start at a time.** A map counts as started only once ASA advertises
-  for join (a log line stamped after this start), RCON answers and a settle
-  period passes. Then the next one may start.
-- **Learned needs.** Each map's need is its recent peak memory (anon + swap of
-  its container) × a margin, never below a floor. Imported maps are seeded
-  from the "(xx GB Mem)" their old logs printed.
-- **Graceful stops.** `SaveWorld` over RCON, then a long stop timeout.
+![Dashboard](docs/images/dashboard.png)
 
-## Run
+**Full documentation: the [project wiki](../../wiki).**
+
+## What it does
+
+- **Clusters first.** A cluster is a set of maps that share a ClusterId,
+  so survivors, creatures and items travel between them. Its maps share
+  game settings, mods and passwords; any map can differ where you want it
+  to. A single map is a one-map cluster.
+- **Never runs out of memory.** Every map has a *running need*, measured
+  once it is fully up, and a larger *startup need*. A map only starts if
+  the host can hold it. Starts run one at a time through a **start queue**:
+  each map waits its turn, memory is checked again, the map starts fully
+  and is measured, then the next one begins. Starts retry on a crash
+  while loading, can be cancelled, and a **memory watchdog** saves and
+  stops a map before the kernel would kill one.
+- **Game settings as sliders.** Difficulty, experience, taming,
+  gathering, breeding and raising, stacks, survival, day and night,
+  rules and cluster travel, with presets (Official, Casual 3×,
+  Boosted 10×, Solo). **Per-item stack sizes** for about 60 items. The
+  app writes them into each map's files right before it starts, so ARK
+  never overwrites them.
+- **Mods** by CurseForge id, in load order, with names you give them.
+- **Backups and restore.** Nightly backups (keep the newest N; keep any
+  forever), one-click restore, and a daily restart with an in-game
+  countdown.
+- **Players and console.** Who is online, kick, cluster-wide bans,
+  messages in chat or on screen, join and leave history, the live game
+  log and admin commands.
+- **Add a map** wizard: pick a map, it copies the game files (or
+  downloads them), picks free ports and joins the cluster's settings.
+- **Updates** one map at a time, with a backup first.
+
+| | |
+|---|---|
+| ![Game settings](docs/images/game-settings.png) | ![Stack sizes](docs/images/stack-sizes.png) |
+| ![Players](docs/images/players.png) | ![Backups](docs/images/backups.png) |
+
+## Requirements
+
+- Linux with **rootless Podman** (4.9+) and cgroup v2, `zstd`, GNU `tar`.
+- Enough memory for your maps: an ASA map needs about 12–20 GiB running and
+  more while it loads. Swap helps (the memory budget counts part of it).
+- About 15 GB of disk per map, plus backups.
+- Python 3.13+ and [uv](https://docs.astral.sh/uv/).
+- The [wapyt](https://github.com/WAwesome-AI/wa_pytincture_widgetset)
+  widget set checked out next to this repo (`../wa_pytincture_widgetset`).
+- Maps run in the POK image
+  [`acekorneya/asa_server`](https://github.com/acekorneya/Ark-Survival-Ascended-Server).
+
+## Quick start
 
 ```bash
+git clone https://github.com/El-Iguana/clustersascended_wapyt.git
+git clone https://github.com/WAwesome-AI/wa_pytincture_widgetset.git
+cd clustersascended_wapyt
 uv sync --group dev
-../wa_pytincture_widgetset/scripts/dev_wheel.sh appcode   # needs PYTHON=<python ≥3.13 with pip>
-echo 'CA_ADMIN_PASSWORD=changeme' > .env
+PYTHON=<a python ≥ 3.13 with pip> ../wa_pytincture_widgetset/scripts/dev_wheel.sh appcode
+echo 'CA_ADMIN_PASSWORD=choose-one' > .env
 scripts/dev.sh start          # http://127.0.0.1:8098/clusters_ascended/
-uv run pytest -q
-uv run --with playwright python tests/smoke/page_smoke.py
 ```
 
-Opening the app on the same machine signs you in without the form
-(`CA_LOCAL_LOGIN=false` turns that off).
+On the same machine you are signed in automatically. To reach it from the
+rest of your network, run it as a service behind HTTPS (Caddy): see
+[Installing and running](../../wiki/Installing-and-Running).
 
-Status: phase 1 (import, dashboard, admission-controlled start/stop on the
-existing containers, jobs). See `CLAUDE.md` for the design and the roadmap.
+Then **Import** an existing podman-compose cluster (POK services sharing a
+ClusterId), or add maps with the wizard.
+
+## Development
+
+```bash
+uv run pytest -q                                   # ~160 tests, ~40 s
+CA_PASSWORD=... uv run --with playwright python tests/smoke/<script>.py
+```
+
+The engine (memory admission, the start queue, containers, backups,
+schedules) is plain Python under `appcode/engine/` and is tested against a
+fake `podman` and a fake RCON server. The browser UI is Python too
+(pytincture + wapyt, running in Pyodide). See
+[Development](../../wiki/Development) and `CLAUDE.md`.
+
+## License
+
+MIT.
