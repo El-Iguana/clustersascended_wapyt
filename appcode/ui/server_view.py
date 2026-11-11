@@ -11,6 +11,7 @@ from wapyt import message
 from services.fmt import duration, gib, phase_label
 from services.server_api import ServerApi
 from ui.common import Listeners, attr, closest, esc, failed, spawn, toast
+from ui.map_game import MapGame, html as map_game_html
 from ui.mods import handle as mods_handle, html as mods_html, read as mods_read
 
 GiB = 1024 ** 3
@@ -31,11 +32,13 @@ class ServerView:
         self.server_id = server_id
         self.listeners = Listeners()
         self.data: dict = {}
+        self.game = MapGame(server_id)
 
     def mount(self) -> None:
         self.el.innerHTML = '<div class="ca-page" id="ca-map"><div class="ca-empty">Loading…</div></div>'
         self.listeners.on(self.el, "click", self._on_click)
         self.listeners.on(self.el, "change", self._on_change)
+        self.listeners.on(self.el, "input", self._on_input)
         self.listeners.every(5000, lambda: spawn(self.refresh_status(), "map status"))
         spawn(self.load(), "map load")
 
@@ -47,6 +50,7 @@ class ServerView:
         if failed(result, "load the map"):
             return
         self.data = result
+        self.game.set_cluster(result["game"]["cluster"])
         root = js.document.getElementById("ca-map")
         if root:
             root.innerHTML = self._render(result)
@@ -68,6 +72,7 @@ class ServerView:
 <div class="ca-page-head"><a class="ca-back" href="#/">←</a><h1>{esc(s["name"])}</h1>
   <span class="ca-sub">in <a href="#/cluster/{esc(d["cluster"]["id"])}">{esc(d["cluster"]["name"])}</a></span></div>
 <section class="ca-card" id="ca-map-status">{self._status(d)}</section>
+{map_game_html(d["game"], s["name"])}
 <div class="ca-two">{self._settings(d)}{self._mods(d)}</div>
 {self._backups(d)}
 {self._runs(d)}"""
@@ -115,8 +120,9 @@ class ServerView:
             b.append('<button class="ca-btn" data-act="clear_hold">Clear hold</button>')
         return f"""
 <div class="ca-status-head"><span class="ca-badge" data-kind="{kind}">{esc(label)}</span>
-  <span class="ca-sub">{esc(s["map_name"])} · session {esc(s["session_name"])} · port {s["game_port"]} · RCON {s["rcon_port"]}
-  · container <code>{esc(s["container_name"])}</code>{" (app)" if cont.get("managed") else " (compose)" if cont.get("exists") else ""}</span></div>
+  <span class="ca-sub">In the server list as <b>{esc(s["session_name"])}</b></span>
+  <details class="ca-more ca-sub"><summary>Details</summary>{esc(s["map_name"])} · port {s["game_port"]} · RCON {s["rcon_port"]}
+  · container <code>{esc(s["container_name"])}</code>{" (app)" if cont.get("managed") else " (compose)" if cont.get("exists") else ""}</details></div>
 <div class="ca-stats">
   <div><span class="ca-k">Needs</span> {gib(d["need"])}</div><div><span class="ca-k">Memory</span> {mem}</div>
   <div><span class="ca-k">Players</span> {who}</div><div><span class="ca-k">Up</span> {up}</div>
@@ -177,8 +183,8 @@ class ServerView:
   <label class="ca-field"><span class="ca-field-label">This map</span><span class="ca-field-input"><select name="mods_mode">
     {opt("inherit", f"Use the cluster's ({len(cd.get('mod_ids') or [])})")}{opt("append", "Cluster's, plus these")}
     {opt("replace", "Only these, in this order")}</select></span></label>
-  <div id="ca-own-mods"{" hidden" if mode == "inherit" else ""}>{mods_html("map", own if mode != "inherit" else list(effective))}</div>
-  <div class="ca-sub">Loads: {esc(", ".join(effective)) or "no mods"}</div>
+  <div id="ca-own-mods"{" hidden" if mode == "inherit" else ""}>{mods_html("map", own if mode != "inherit" else list(effective), names=d.get("mod_names"))}</div>
+  <div class="ca-sub">Loads: {esc(", ".join(d.get("mod_names", {}).get(m) or m for m in effective)) or "no mods"}</div>
   <div class="ca-actions"><button class="ca-btn ca-primary" data-act="save">Save</button></div>
 </section>"""
 
@@ -206,7 +212,12 @@ class ServerView:
 
     # -- events --------------------------------------------------------------
 
+    def _on_input(self, event) -> None:
+        self.game.handle_input(event)
+
     def _on_change(self, event) -> None:
+        if self.game.handle_change(event):
+            return
         if attr(event.target, "name") == "mods_mode":
             box = js.document.getElementById("ca-own-mods")
             if box:
@@ -214,6 +225,11 @@ class ServerView:
 
     def _on_click(self, event) -> None:
         if mods_handle(event, "map"):
+            return
+        if self.game.handle_click(event, closest):
+            own = closest(event.target, '[data-own-act="save"]')
+            if own:
+                spawn(self._save_game(), "save map game")
             return
         btn = closest(event.target, "[data-act]")
         if not btn or btn.disabled:
@@ -274,6 +290,10 @@ class ServerView:
             return
         toast("Saved." + (" Restart it to apply." if result.get("restart_needed") else ""), kind="success")
         await self.load()
+
+    async def _save_game(self) -> None:
+        if await self.game.save():
+            await self.load()
 
     async def _clear_hold(self) -> None:
         result = await ServerApi().clear_hold_async(self.server_id)

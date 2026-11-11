@@ -148,7 +148,7 @@ def admit(snap: Snapshot, kind: str, server_id: str,
 
     if problems:
         victims = pick_victims(snap, others, cand)
-        reason = f"Not enough room to start {cand.name}: " + "; ".join(problems) + "."
+        reason = f"Not enough memory to start {cand.name}: " + "; ".join(problems) + "."
         return Decision(False, reason, lines, victims, numbers)
     return Decision(True, f"{cand.name} fits.", lines, [], numbers)
 

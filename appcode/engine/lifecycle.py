@@ -24,7 +24,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from engine import admission, backups, logtail, paths, podman, rcon, spec, state, steam, store
+from engine import admission, backups, game_settings, logtail, paths, podman, rcon, spec, state, steam, store
 from engine.models import effective
 from engine.supervisor import abort_flag
 
@@ -161,6 +161,8 @@ def start(server_id: str, log, check: str = "start", timeout_s: int | None = Non
         if not decision.ok:
             raise Refused(decision.reason)
         ensure_container(server, cluster, eff, settings, log, update_pass=update_pass)
+        # Stopped now, so ASA's shutdown rewrite cannot undo this.
+        game_settings.apply(server, cluster, log)
         if not is_managed(podman.inspect(server.container_name)):
             log(f"Note: {server.container_name} is still the compose container (adopt it to let the app own it).")
 

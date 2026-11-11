@@ -125,7 +125,7 @@ class ClustersAscended(MainWindow):
         elif page == "map" and len(parts) > 1:
             self._view = ServerView(container, parts[1])
         elif page == "cluster" and len(parts) > 1:
-            self._view = ClusterView(container, parts[1])
+            self._view = ClusterView(container, parts[1], parts[2] if len(parts) > 2 else "")
         else:
             page = "dashboard"
             self._view = DashboardView(container)
@@ -240,6 +240,44 @@ _CSS = """
 .ca-icon:hover{background:#1f2937;color:#e5e7eb;}
 .ca-mod-add{display:flex;gap:8px;}
 .ca-mod-add input{flex:1;min-width:0;background:#0b1222;color:#e5e7eb;border:1px solid #334155;border-radius:6px;padding:6px 10px;font:inherit;}
+.ca-tabs{display:flex;gap:4px;border-bottom:1px solid #1f2937;flex-wrap:wrap;}
+.ca-tab{display:inline-flex;align-items:center;gap:6px;padding:8px 14px;color:#94a3b8;text-decoration:none;
+  border-bottom:2px solid transparent;margin-bottom:-1px;font-weight:500;}
+.ca-tab:hover{color:#e5e7eb;}
+.ca-tab-on{color:#e5e7eb;border-bottom-color:#38bdf8;}
+#ca-cluster-body,#ca-game,#ca-mods-tab{display:flex;flex-direction:column;gap:16px;}
+.ca-presets{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px;margin-top:10px;}
+.ca-preset{display:flex;flex-direction:column;gap:4px;text-align:left;background:#0b1222;border:1px solid #334155;
+  border-radius:10px;padding:12px 14px;color:#e5e7eb;font:inherit;cursor:pointer;}
+.ca-preset:hover{border-color:#38bdf8;background:#0f1a30;}
+.ca-preset b{font-size:15px;}
+.ca-preset span{color:#94a3b8;font-size:12.5px;}
+.ca-game-bar{position:sticky;top:0;z-index:5;background:#0b1020;padding:8px 0;display:flex;flex-direction:column;gap:6px;}
+.ca-jump{display:flex;gap:6px;flex-wrap:wrap;}
+.ca-jump a{font-size:12.5px;color:#cbd5e1;text-decoration:none;border:1px solid #334155;border-radius:999px;padding:2px 10px;}
+.ca-jump a:hover{border-color:#38bdf8;color:#fff;}
+.ca-game-form .wapyt-form-fieldset{margin-bottom:10px;}
+.ca-more{margin-top:4px;}
+.ca-more summary{cursor:pointer;color:#93c5fd;margin-bottom:10px;}
+.ca-mapcards{display:flex;flex-direction:column;gap:8px;margin-top:10px;}
+.ca-mapcard{display:flex;flex-direction:column;gap:2px;background:#0b1222;border:1px solid #1e293b;border-radius:8px;
+  padding:10px 12px;color:#e5e7eb !important;text-decoration:none;}
+.ca-mapcard:hover{border-color:#38bdf8;}
+.ca-modlist{list-style:none;margin:12px 0;padding:0;display:flex;flex-direction:column;gap:8px;}
+.ca-modcard{display:flex;align-items:center;gap:12px;background:#0b1222;border:1px solid #1e293b;border-radius:10px;padding:10px 12px;}
+.ca-modnum{width:28px;height:28px;border-radius:50%;background:#1e293b;display:flex;align-items:center;justify-content:center;
+  font-weight:600;color:#93c5fd;flex:none;}
+.ca-modbody{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;}
+.ca-modname{background:transparent;border:1px solid transparent;border-radius:6px;color:#e5e7eb;font:inherit;font-weight:600;
+  font-size:15px;padding:3px 6px;margin-left:-6px;}
+.ca-modname:hover,.ca-modname:focus{border-color:#334155;background:#0b1020;outline:none;}
+.ca-modbtns{display:flex;gap:2px;}
+.ca-modadd{display:flex;gap:8px;flex-wrap:wrap;}
+.ca-modadd select{min-width:280px;background:#0b1222;color:#e5e7eb;border:1px solid #334155;border-radius:6px;padding:6px 10px;font:inherit;}
+.ca-modadd input{flex:1;min-width:180px;background:#0b1222;color:#e5e7eb;border:1px solid #334155;border-radius:6px;padding:6px 10px;font:inherit;}
+.ca-override{display:grid;grid-template-columns:1fr 2fr auto auto;gap:10px;align-items:center;padding:6px 0;border-bottom:1px solid #172033;}
+.ca-override input[type=range]{width:100%;}
+.ca-override output{min-width:56px;text-align:right;font-variant-numeric:tabular-nums;}
 @media (max-width:700px){.ca-field{grid-template-columns:1fr;}.ca-help{grid-column:1;}.ca-page{padding:12px;}}
 """
 

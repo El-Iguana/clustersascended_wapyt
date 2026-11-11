@@ -54,6 +54,11 @@ MIGRATIONS = [
         build_id TEXT, pinned INTEGER NOT NULL DEFAULT 0, note TEXT NOT NULL DEFAULT '');
     CREATE INDEX backups_server ON backups(server, created DESC);
     """,
+    # 3
+    """
+    CREATE TABLE mods (id TEXT PRIMARY KEY, name TEXT NOT NULL DEFAULT '', note TEXT NOT NULL DEFAULT '',
+        updated REAL NOT NULL);
+    """,
 ]
 
 
@@ -256,6 +261,20 @@ def recent_runs(server_id: str, since: float) -> list[dict]:
         "SELECT * FROM server_runs WHERE server=? AND started_at>=? AND source!='import' "
         "ORDER BY started_at DESC", (server_id, since)).fetchall()
     return [dict(r) for r in rows]
+
+
+# -- mod names ----------------------------------------------------------------
+
+def mod_names(ids=None) -> dict:
+    rows = conn().execute("SELECT id, name FROM mods").fetchall()
+    names = {r[0]: r[1] for r in rows if r[1]}
+    return names if ids is None else {i: names[i] for i in ids if i in names}
+
+
+def set_mod_name(mod_id: str, name: str) -> None:
+    conn().execute("INSERT INTO mods(id, name, updated) VALUES(?, ?, ?) "
+                   "ON CONFLICT(id) DO UPDATE SET name=excluded.name, updated=excluded.updated",
+                   (mod_id, name, time.time()))
 
 
 # -- audit --------------------------------------------------------------------

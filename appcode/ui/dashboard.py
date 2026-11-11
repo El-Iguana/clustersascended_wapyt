@@ -142,7 +142,9 @@ class DashboardView:
       <div class="ca-sub">ClusterId <code>{esc(c["cluster_id"])}</code> · transfer folder <code>{esc(c["transfer_dir"])}</code>
         · {mods} shared mods{(' · ' + ', '.join(limits)) if limits else ''}</div>
     </div>
-    <div class="ca-sub">{len(c["servers"])} maps · committed {gib(c["committed"])}</div>
+    <div class="ca-sub"><a href="#/cluster/{esc(c["id"])}/settings"><span class="mdi mdi-tune"></span> Game settings</a>
+      · <a href="#/cluster/{esc(c["id"])}/mods"><span class="mdi mdi-puzzle-outline"></span> Mods</a>
+      · {len(c["servers"])} maps · committed {gib(c["committed"])}</div>
   </div>
   <div class="ca-grid">{cards}</div>
 </section>"""
@@ -175,7 +177,7 @@ class DashboardView:
         flags = s.get("flags") or {}
         chips = []
         if flags.get("exists") and not flags.get("managed"):
-            chips.append('<span class="ca-chip" title="Adopt it on the map page">compose container</span>')
+            chips.append('<span class="ca-chip" title="Adopt it on the map page">not managed yet</span>')
         if flags.get("drift"):
             chips.append('<span class="ca-chip ca-chip-warn">settings change at next start</span>')
         if flags.get("update_available"):
@@ -191,7 +193,7 @@ class DashboardView:
                        f'<details><summary>Why</summary>{"".join(f"<div>{esc(x)}</div>" for x in p["lines"])}'
                        f"</details></div>")
         elif p and p["ok"]:
-            preview = f'<div class="ca-fits"><span class="mdi mdi-check"></span> Fits: needs {gib(s["need"])}</div>'
+            preview = f'<div class="ca-fits"><span class="mdi mdi-check"></span> Enough memory to start (needs about {gib(s["need"])})</div>'
 
         buttons = []
         phase = s["phase"]
@@ -219,7 +221,7 @@ class DashboardView:
   <header>
     <div>
       <h3><a class="ca-plain" href="#/map/{esc(s["id"])}">{esc(s["name"])}</a></h3>
-      <div class="ca-sub">{esc(s["map"])} · {esc(s["session"])} · port {s["game_port"]} · RCON {s["rcon_port"]} · priority {s["priority"]}</div>
+      <div class="ca-sub">In the server list as <b>{esc(s["session"])}</b></div>
     </div>
     <span class="ca-badge" data-kind="{kind}">{esc(label)}</span>
   </header>
@@ -227,7 +229,9 @@ class DashboardView:
     <div><span class="ca-k">Needs</span> {gib(s["need"])}</div>
     <div><span class="ca-k">Memory</span> {mem}</div>
   </div>
-  <div class="ca-sub">{esc(s["container"])}{uptime}</div>
+  <div class="ca-sub">{uptime.lstrip(" ·")}</div>
+  <details class="ca-more ca-sub"><summary>Details</summary>{esc(s["map"])} · port {s["game_port"]} · RCON {s["rcon_port"]}
+    · priority {s["priority"]} · container {esc(s["container"])}</details>
   <div class="ca-chips">{''.join(chips)}</div>
   {who}
   {held}

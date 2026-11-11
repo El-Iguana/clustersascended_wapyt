@@ -37,11 +37,20 @@ def log(saved_dir, text):
         fh.write(stamp + text + "\n")
 
 
+def args_i_is_script(argv, i):
+    return i >= 2 and argv[i - 1] == "-c"
+
+
 def main(argv):
     data = load()
     cmd = argv[0]
     with open(Path(os.environ["FAKE_PODMAN_STATE"]) / "calls.log", "a") as fh:
         fh.write(" ".join(argv) + "\n")
+    if cmd == "unshare":   # run the command as is; ownership changes are no-ops here
+        import subprocess
+        args = [a.replace("chown", "true") if args_i_is_script(argv, i) else a
+                for i, a in enumerate(argv[1:], start=1)]
+        return subprocess.run(args).returncode
     if cmd == "ps":
         out = [{"Names": [n], "State": c["state"], "StartedAt": c.get("started_at", 0),
                 "Id": "id-" + n, "ExitCode": c.get("exit_code", 0), "Labels": c.get("labels") or {}}

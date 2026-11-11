@@ -104,7 +104,7 @@ def test_starts_are_sequential_and_a_third_is_refused(cluster_env):
     assert a["ok"] and b["ok"]
     c = supervisor.enqueue("start", "gen")
     assert not c["ok"]
-    assert "Not enough room to start GEN" in c["error"]
+    assert "Not enough memory to start GEN" in c["error"]
     assert c["job"]["state"] == "refused"
 
     ja, jb = wait_job(a["job"]["id"]), wait_job(b["job"]["id"])
@@ -266,7 +266,7 @@ def test_autostart_brings_back_what_should_run(cluster_env):
         store.save_server(s)
     results = boot.autostart()
     assert [r["ok"] for r in results] == [True, True, False]   # the third is refused
-    assert "Not enough room" in results[2]["error"]
+    assert "Not enough memory" in results[2]["error"]
     for r in results[:2]:
         assert wait_job(r["job"]["id"])["state"] == "done"
 

@@ -71,7 +71,16 @@ def server_detail(server_id: str) -> Optional[dict]:
         "build": build_info(s),
         "backups": store.backups(s.id, 30),
         "runs": runs,
+        "game": {"managed": c.game is not None, "cluster": _game_effective(c),
+                 "own": (s.overrides or {}).get("game") or {}},
+        "mod_names": store.mod_names(),
     }
+
+
+def _game_effective(cluster) -> dict:
+    from engine import game_settings
+
+    return game_settings.effective(cluster)
 
 
 def cluster_detail(cluster_id: str) -> Optional[dict]:
@@ -284,3 +293,127 @@ def clear_hold(server_id: str) -> None:
 
 def _running_names(cluster_id: str) -> list:
     return [s.name for s in store.servers(cluster_id) if state.phase(s.id) in COMMITTED]
+
+
+# -- game settings ------------------------------------------------------------
+
+KNOWN_MODS = {
+    "942024": "Dino Depot", "928548": "Shiny! Dinos Ascended", "929420": "Super Spyglass Plus",
+    "950970": "Birthweaver Tames",
+}
+
+
+def _game_values(values: dict) -> dict:
+    """Validate {key: value} against the catalogue; returns typed values."""
+    from services.ark_settings import SETTINGS, in_range, normalize
+
+    out = {}
+    for key, raw in (values or {}).items():
+        if key not in SETTINGS:
+            raise Invalid(f"Not a setting this app manages: {key}")
+        try:
+            value = normalize(key, raw)
+        except ValueError as exc:
+            raise Invalid(str(exc))
+        if not in_range(key, value):
+            s = SETTINGS[key]
+            raise Invalid(f"{s['label']} must be between {s['min']:g} and {s['max']:g}.")
+        out[key] = value
+    return out
+
+
+def game_detail(cluster_id: str) -> Optional[dict]:
+    from engine import game_settings
+    from services.ark_settings import differs
+
+    c = store.cluster(cluster_id)
+    if c is None:
+        return None
+    maps = []
+    for s in store.servers(c.id):
+        own = (s.overrides or {}).get("game") or {}
+        maps.append({"id": s.id, "name": s.name, "phase": state.phase(s.id), "overrides": own})
+    values = game_settings.effective(c)
+    return {"cluster": {"id": c.id, "name": c.name}, "managed": c.game is not None,
+            "values": values, "differs": differs(values), "maps": maps}
+
+
+def save_game(cluster_id: str, values: dict) -> dict:
+    """The cluster's game settings: every key given (the form sends all of them)."""
+    from services.ark_settings import is_default
+
+    c = store.cluster(cluster_id)
+    if c is None:
+        raise Invalid("Unknown cluster.")
+    typed = _game_values(values)
+    c.game = {k: v for k, v in typed.items() if not is_default(k, v)}
+    store.save_cluster(c)
+    return {"restart_needed": _running_names(c.id), "differs": len(c.game)}
+
+
+def import_game(cluster_id: str) -> dict:
+    """Take the settings the maps' ini files use now: shared ones to the cluster, the rest per map."""
+    from engine import game_settings
+
+    c = store.cluster(cluster_id)
+    if c is None:
+        raise Invalid("Unknown cluster.")
+    servers = store.servers(c.id)
+    shared, own = game_settings.import_from_maps(c, servers)
+    c.game = shared
+    store.save_cluster(c)
+    for s in servers:
+        o = dict(s.overrides or {})
+        if own.get(s.id):
+            o["game"] = own[s.id]
+        else:
+            o.pop("game", None)
+        s.overrides = o
+        store.save_server(s)
+    for mod_id in c.defaults.get("mod_ids") or []:
+        if mod_id in KNOWN_MODS and mod_id not in store.mod_names([mod_id]):
+            store.set_mod_name(mod_id, KNOWN_MODS[mod_id])
+    return {"shared": len(shared), "per_map": {s.id: len(own.get(s.id) or {}) for s in servers}}
+
+
+def save_map_game(server_id: str, overrides: dict) -> dict:
+    """A map's own game settings (only the keys that differ from its cluster's)."""
+    s = store.server(server_id)
+    if s is None:
+        raise Invalid("Unknown map.")
+    typed = _game_values(overrides)
+    o = dict(s.overrides or {})
+    if typed:
+        o["game"] = typed
+    else:
+        o.pop("game", None)
+    s.overrides = o
+    store.save_server(s)
+    return {"restart_needed": [s.name] if state.phase(s.id) in COMMITTED else []}
+
+
+# -- mods ---------------------------------------------------------------------
+
+def mods_detail(cluster_id: str) -> Optional[dict]:
+    c = store.cluster(cluster_id)
+    if c is None:
+        return None
+    ids = list(c.defaults.get("mod_ids") or [])
+    maps = []
+    for s in store.servers(c.id):
+        o = s.overrides or {}
+        maps.append({"id": s.id, "name": s.name, "mode": o.get("mods_mode") or "inherit",
+                     "own": list(o.get("mod_ids") or []),
+                     "loads": list(effective(s, c).get("mod_ids") or [])})
+        ids += [m for m in o.get("mod_ids") or [] if m not in ids]
+    return {"cluster": {"id": c.id, "name": c.name}, "mods": list(c.defaults.get("mod_ids") or []),
+            "maps": maps, "names": store.mod_names(ids)}
+
+
+def name_mod(mod_id: str, name: str) -> None:
+    if not _MOD_ID.match(str(mod_id)):
+        raise Invalid("Not a mod id.")
+    name = str(name or "").strip()
+    if len(name) > 80:
+        raise Invalid("Keep the name under 80 characters.")
+    store.set_mod_name(str(mod_id), name)

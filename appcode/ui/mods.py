@@ -13,9 +13,12 @@ import js
 from ui.common import attr, closest, esc
 
 
-def html(prefix: str, mods: list, note: str = "") -> str:
+def html(prefix: str, mods: list, note: str = "", names: dict | None = None) -> str:
+    names = names or {}
+    _names[prefix] = names
     rows = "".join(
-        f'<li data-mod="{esc(m)}"><span class="ca-mod-n">{i}.</span><code>{esc(m)}</code>'
+        f'<li data-mod="{esc(m)}"><span class="ca-mod-n">{i}.</span>'
+        f'{"<b>" + esc(names[m]) + "</b> " if names.get(m) else ""}<code>{esc(m)}</code>'
         f'<span class="ca-mod-btns">'
         f'<button class="ca-icon" data-mods="{prefix}" data-mod-act="up" title="Move up">▲</button>'
         f'<button class="ca-icon" data-mods="{prefix}" data-mod-act="down" title="Move down">▼</button>'
@@ -30,6 +33,9 @@ def html(prefix: str, mods: list, note: str = "") -> str:
             f'{f"<div class=ca-sub>{esc(note)}</div>" if note else ""}</div>')
 
 
+_names: dict = {}
+
+
 def read(prefix: str) -> list:
     box = js.document.getElementById(f"ca-mods-{prefix}")
     if not box:
@@ -40,7 +46,7 @@ def read(prefix: str) -> list:
 def _redraw(prefix: str, mods: list) -> None:
     box = js.document.getElementById(f"ca-mods-{prefix}")
     if box:
-        box.outerHTML = html(prefix, mods)
+        box.outerHTML = html(prefix, mods, names=_names.get(prefix))
 
 
 def handle(event, prefix: str) -> bool:

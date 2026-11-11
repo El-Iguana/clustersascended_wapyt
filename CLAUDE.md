@@ -45,6 +45,29 @@ in `~/asa-cluster`). Full plan: `~/.claude/plans/tender-meandering-panda.md`.
 - Stops run on their own `stop` lane and abort a start still loading the
   same map (`supervisor.abort_flag`).
 
+## Game settings and mods (2026-11-11)
+
+- `services/ark_settings.py` (pure, shared with the page) is the catalogue: key, file
+  (GUS `[ServerSettings]` / Game.ini `[/Script/ShooterGame.ShooterGameMode]`), group, kind,
+  official default, slider range, plain-language label and help, plus presets.
+- **The app writes the ini right before a map starts** (`lifecycle.start` →
+  `game_settings.apply`): the container is stopped, so ASA's rewrite of GameUserSettings.ini
+  on shutdown cannot undo it. Effective = official ← `cluster.game` ← map `overrides["game"]`.
+- **Rules of the write:** a key already in the file is rewritten in place (left byte for byte
+  when its value is equal); a missing key is added only when it differs from official;
+  **nothing is deleted** (wiki defaults are not trusted for ASA); every other line, CRLF/LF and
+  repeated keys stay. Section/key matching is case-insensitive (`engine/ark_ini.py`). Files are
+  read as bytes (`read_text` turns CRLF into LF) and written through `podman unshare` as 7777.
+  Previous files go to `data/ini-backups/<server>/` (last 10).
+- `cluster.game is None` means never managed: nothing is written until the user imports
+  ("Bring in current settings": equal values → cluster, differing → per map) or saves.
+- POK only touches `ServerPassword` and `[MessageOfTheDay]` in GUS at start; SessionName, admin
+  password and RCON come from its command line; MaxPlayers is `-WinLiveMaxPlayers`.
+- Mods: CurseForge ids in load order; friendly names in the `mods` table (typed by the user).
+  A CurseForge API key (search, pictures) is a later option.
+- The "wild level" figure uses the wiki's ASE formula (30 × (offset × (difficulty − 0.5) + 0.5)):
+  shown as "about"; unverified for ASA.
+
 ## Layout
 
 ```
@@ -98,7 +121,8 @@ three timeouts mark podman degraded).
 2. ✅ Ownership + safety: app-created containers (spec builder, `--restart=no`, adopt/rollback),
    cluster and map editing, mods editor, watchdog, boot autostart, crashloop guard,
    sequential updates with pre-update backups, world backups. Cutover done 2026-11-11.
-3. Live ops: console (log tail + RCON), players, ini settings, add-map wizard.
+3. Live ops: ✅ game settings (sliders, presets, per-map overrides) and named mods; still to do:
+   console (log tail + RCON), players, add-map wizard.
 4. World backups and restore; files.
 5. Schedules (restarts with warnings, backups, update checks), memory history charts.
 

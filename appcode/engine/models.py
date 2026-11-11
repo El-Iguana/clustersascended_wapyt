@@ -66,6 +66,9 @@ class Cluster:
     max_running: Optional[int] = None   # may only be stricter than the host
     memory_cap: Optional[int] = None    # bytes; Σ needs of this cluster
     defaults: dict = field(default_factory=dict)
+    # Game settings (services/ark_settings.py keys) the maps share. None: the
+    # app has never managed them and leaves the ini files alone.
+    game: Optional[dict] = None
 
     def to_dict(self) -> dict:
         return asdict(self)

@@ -31,7 +31,7 @@ def test_first_map_fits():
 def test_third_map_is_refused_with_a_breakdown():
     d = admit(running_two(), "start", "gen")
     assert not d.ok
-    assert "Not enough room to start GEN" in d.reason
+    assert "Not enough memory to start GEN" in d.reason
     assert "at most 2 maps" in d.reason
     assert "budget" in d.reason
     assert any("GEN needs 17.0 GiB" in line for line in d.lines)

@@ -30,6 +30,15 @@ def main() -> int:
         page.wait_for_selector("#ca-dash .ca-server", timeout=120_000)
         page.wait_for_timeout(2000)
         page.screenshot(path=str(OUT / "https-dashboard.png"), full_page=True)
+        for route, selector in (("#/cluster/oldmangan", "#ca-cluster-body .ca-mapcards"),
+                                ("#/cluster/oldmangan/settings", "#ca-game-form .wapyt-form, #ca-game-form form"),
+                                ("#/cluster/oldmangan/mods", "#ca-mods-tab .ca-modlist"),
+                                ("#/map/lostcolony", "#ca-map-status"),
+                                ("#/jobs", "#ca-jobs .ca-table")):
+            page.evaluate(f"location.hash = '{route}'")
+            page.wait_for_selector(selector, timeout=30_000)
+            page.wait_for_timeout(1200)
+            page.screenshot(path=str(OUT / f"https-{route.strip('#/').replace('/', '-')}.png"), full_page=True)
         browser.close()
     for e in errors:
         print("error:", e)
