@@ -1,0 +1,110 @@
+# ASA cluster (podman rootless) — migrated off AMP
+# Two servers each have their OWN game install (./ServerFiles/arkserver and
+# ./ServerFiles_Astraeos/arkserver; split 2026-06-23 to kill the mod-install race)
+# and share one cluster transfer dir (./Cluster). Each has its own Saved tree and
+# unique ports.
+#
+#   asa-lostcolony : LostColony_WP : game 7777/udp  rcon 27020  (UPDATE MASTER)
+#   asa-astraeos   : Astraeos_WP   : game 7787/udp  rcon 27021  (UPDATE FOLLOWER)
+#   asa-genesis1   : Genesis_WP    : game 7797/udp  rcon 27022  (added 2026-07-04)
+#
+# Run only 2 of the 3 at a time (RAM); Lost Colony is the main map.
+#
+# Uses host networking — most reliable path for ASA's UDP traffic under rootless
+# podman. Ports are kept distinct via ASA_PORT / RCON_PORT, so the two coexist.
+
+services:
+  asa-lostcolony:
+    image: docker.io/acekorneya/asa_server:2_1_latest
+    container_name: asa-lostcolony
+    network_mode: host
+    restart: unless-stopped
+    environment:
+    - PUID=7777
+    - PGID=7777
+    - TZ=America/New_York
+    - INSTANCE_NAME=asa-lostcolony
+    - MAP_NAME=LostColony_WP
+    - SESSION_NAME=OldManGan1
+    - SERVER_ADMIN_PASSWORD=adminsecret
+    - SERVER_PASSWORD=
+    - ASA_PORT=7777
+    - RCON_PORT=27020
+    - RCON_ENABLED=TRUE
+    - MAX_PLAYERS=70
+    - CLUSTER_ID=oldmangancluster
+    - MOD_IDS=1188679,930170,929420,942024,928548,950970,945883,940975
+    - UPDATE_SERVER=FALSE
+    - UPDATE_COORDINATION_ROLE=MASTER
+    - UPDATE_COORDINATION_PRIORITY=1
+    - RANDOM_STARTUP_DELAY=TRUE
+    - CUSTOM_SERVER_ARGS=-newsaveformat -usestore -NoTransferFromFiltering -NoBattlEye
+    volumes:
+    - ./ServerFiles/arkserver:/home/pok/arkserver
+    - ./Instance_LostColony/Saved:/home/pok/arkserver/ShooterGame/Saved
+    - ./Cluster:/home/pok/arkserver/ShooterGame/Saved/clusters
+
+  asa-astraeos:
+    image: docker.io/acekorneya/asa_server:2_1_latest
+    container_name: asa-astraeos
+    network_mode: host
+    restart: unless-stopped
+    environment:
+    - PUID=7777
+    - PGID=7777
+    - TZ=America/New_York
+    - INSTANCE_NAME=asa-astraeos
+    - MAP_NAME=Astraeos_WP
+    - SESSION_NAME=OldManGan2
+    - SERVER_ADMIN_PASSWORD=adminsecret
+    - SERVER_PASSWORD=
+    - ASA_PORT=7787
+    - RCON_PORT=27021
+    - RCON_ENABLED=TRUE
+    - MAX_PLAYERS=70
+    - CLUSTER_ID=oldmangancluster
+    - MOD_IDS=1188679,930170,929420,942024,928548,950970,945883,940975
+    - UPDATE_SERVER=FALSE
+    - UPDATE_COORDINATION_ROLE=MASTER
+    - UPDATE_COORDINATION_PRIORITY=1
+    - RANDOM_STARTUP_DELAY=TRUE
+    - CUSTOM_SERVER_ARGS=-newsaveformat -usestore -NoTransferFromFiltering -NoBattlEye
+    volumes:
+    - ./ServerFiles_Astraeos/arkserver:/home/pok/arkserver
+    - ./Instance_Astraeos/Saved:/home/pok/arkserver/ShooterGame/Saved
+    - ./Cluster:/home/pok/arkserver/ShooterGame/Saved/clusters
+
+  # asa-genesis1 : Genesis_WP : game 7797/udp  rcon 27022  (added 2026-07-04)
+  # Third map (Genesis Ascended Part 1), configured like Lost Colony. Own install
+  # (ServerFiles_Genesis1) + own Saved tree, shares the cluster transfer dir.
+  # NOTE: run only 2 servers at a time (RAM). MAP_NAME=Genesis_WP follows the ASA
+  # <Name>_WP convention — verify on first boot; fix here if the log rejects it.
+  asa-genesis1:
+    image: docker.io/acekorneya/asa_server:2_1_latest
+    container_name: asa-genesis1
+    network_mode: host
+    restart: unless-stopped
+    environment:
+    - PUID=7777
+    - PGID=7777
+    - TZ=America/New_York
+    - INSTANCE_NAME=asa-genesis1
+    - MAP_NAME=Genesis_WP
+    - SESSION_NAME=OldManGan3
+    - SERVER_ADMIN_PASSWORD=adminsecret
+    - SERVER_PASSWORD=
+    - ASA_PORT=7797
+    - RCON_PORT=27022
+    - RCON_ENABLED=TRUE
+    - MAX_PLAYERS=70
+    - CLUSTER_ID=oldmangancluster
+    - MOD_IDS=1188679,930170,929420,942024,928548,950970,945883,1598772,940975
+    - UPDATE_SERVER=FALSE
+    - UPDATE_COORDINATION_ROLE=MASTER
+    - UPDATE_COORDINATION_PRIORITY=1
+    - RANDOM_STARTUP_DELAY=TRUE
+    - CUSTOM_SERVER_ARGS=-newsaveformat -usestore -NoTransferFromFiltering -NoBattlEye
+    volumes:
+    - ./ServerFiles_Genesis1/arkserver:/home/pok/arkserver
+    - ./Instance_Genesis1/Saved:/home/pok/arkserver/ShooterGame/Saved
+    - ./Cluster:/home/pok/arkserver/ShooterGame/Saved/clusters

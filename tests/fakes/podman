@@ -1,0 +1,87 @@
+#!/usr/bin/env python3
+"""
+A fake podman for orchestrator tests. State lives in $FAKE_PODMAN_STATE/state.json:
+
+    {"containers": {"<name>": {"state": "exited", "started_at": 0, "saved_dir": "...",
+                               "on_start": "ready" | "hang" | "exit" | "silent",
+                               "ready_gb": 16.5}}}
+
+``start`` marks the container running and, per ``on_start``, appends a
+stamped "advertising for join" (or "Hang detected") line to its
+ShooterGame.log, or leaves it exited.
+"""
+import json
+import os
+import sys
+import time
+from datetime import datetime, timezone
+from pathlib import Path
+
+STATE = Path(os.environ["FAKE_PODMAN_STATE"]) / "state.json"
+
+
+def load():
+    return json.loads(STATE.read_text())
+
+
+def save(data):
+    STATE.write_text(json.dumps(data))
+
+
+def log(saved_dir, text):
+    p = Path(saved_dir) / "Logs" / "ShooterGame.log"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    now = datetime.now(timezone.utc)
+    stamp = now.strftime("[%Y.%m.%d-%H.%M.%S:") + f"{now.microsecond // 1000:03d}][  1]"
+    with open(p, "a") as fh:
+        fh.write(stamp + text + "\n")
+
+
+def main(argv):
+    data = load()
+    cmd = argv[0]
+    with open(Path(os.environ["FAKE_PODMAN_STATE"]) / "calls.log", "a") as fh:
+        fh.write(" ".join(argv) + "\n")
+    if cmd == "ps":
+        out = [{"Names": [n], "State": c["state"], "StartedAt": c.get("started_at", 0),
+                "Id": "id-" + n, "ExitCode": c.get("exit_code", 0), "Labels": {}}
+               for n, c in data["containers"].items()]
+        print(json.dumps(out))
+        return 0
+    name = argv[-1]
+    c = data["containers"].get(name)
+    if c is None:
+        print(f"Error: no container with name or ID \"{name}\" found", file=sys.stderr)
+        return 125
+    if cmd == "inspect":
+        print(json.dumps([{"Name": name, "State": {"Status": c["state"], "Running": c["state"] == "running",
+                                                   "CgroupPath": ""}}]))
+        return 0
+    if cmd == "start":
+        if c.get("start_delay"):
+            time.sleep(c["start_delay"])
+        c["started_at"] = int(time.time())
+        mode = c.get("on_start", "ready")
+        if mode == "exit":
+            c["state"], c["exit_code"] = "exited", 1
+        else:
+            c["state"] = "running"
+            if mode == "ready":
+                log(c["saved_dir"], "Server has completed startup and is now advertising for join. "
+                    f"({c.get('ready_gb', 16.5):.2f}GB Mem)")
+            elif mode == "hang":
+                log(c["saved_dir"], "Hang detected on GameThread (10.0 seconds)")
+        save(data)
+        print(name)
+        return 0
+    if cmd == "stop":
+        c["state"], c["exit_code"] = "exited", 0
+        save(data)
+        print(name)
+        return 0
+    print(f"fake podman: unsupported {argv}", file=sys.stderr)
+    return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
