@@ -140,11 +140,14 @@ class GameSettingsTab:
         jump = closest(event.target, "[data-jump]")
         if jump:
             event.preventDefault()
-            target = js.document.getElementById(attr(jump, "data-jump"))
-            if not target:
-                target = js.document.querySelector(f'[data-field-id="{attr(jump, "data-jump")}"]')
-            if target:
-                target.scrollIntoView()
+            # wapyt marks a fieldset with data-fieldset-id, not an id.
+            target = js.document.querySelector(f'[data-fieldset-id="{attr(jump, "data-jump")}"]')
+            view = js.document.getElementById("ca-view")
+            bar = js.document.querySelector(".ca-game-bar")
+            if target and view:
+                top = target.getBoundingClientRect().top - view.getBoundingClientRect().top
+                offset = (bar.offsetHeight if bar else 0) + 12
+                view.scrollTo(0, view.scrollTop + top - offset)
             return
         card = closest(event.target, "[data-preset]")
         if card:
