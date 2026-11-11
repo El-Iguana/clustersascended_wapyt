@@ -17,7 +17,18 @@ FIELDS = (
     ("default_need", "Minimum need per map", "GiB",
      "The least a map is assumed to need, whatever it has used before.", True),
     ("need_margin", "Margin over the learned peak", "×", "A map's need is its recent peak times this.", False),
-    ("settle_s", "Settle time", "s", "After a map is ready, wait this long before anything else starts.", False),
+    ("startup_factor", "Startup needs more", "×",
+     "Starting a map is always assumed to take more memory than running it: a start reserves at least its "
+     "running need times this (more if a measured start peaked higher).", False),
+    ("settle_s", "Settle time", "s", "After a map is ready, wait this long (it keeps growing) before it is "
+     "measured and the next start begins.", False),
+    ("memory_recheck_s", "Check memory every", "s", "A start whose turn has come but does not fit waits and "
+     "checks again this often.", False),
+    ("memory_wait_s", "Wait for memory at most", "s", "Then it gives up (and the next start gets its turn).",
+     False),
+    ("start_attempts", "Tries per start", "", "A crash or hang while loading stops the map and tries again, "
+     "up to this many times.", False),
+    ("retry_delay_s", "Pause before a retry", "s", "", False),
     ("ready_timeout_s", "Ready timeout", "s", "A start that is not advertising by then fails and is stopped.", False),
     ("rcon_timeout_s", "RCON timeout", "s", "After it advertises, RCON must answer within this.", False),
     ("save_timeout_s", "Save timeout", "s", "How long SaveWorld may take before stopping anyway.", False),

@@ -278,6 +278,14 @@ _CSS = """
 .ca-override{display:grid;grid-template-columns:1fr 2fr auto auto;gap:10px;align-items:center;padding:6px 0;border-bottom:1px solid #172033;}
 .ca-override input[type=range]{width:100%;}
 .ca-override output{min-width:56px;text-align:right;font-variant-numeric:tabular-nums;}
+.ca-queue{list-style:none;margin:10px 0 0;padding:0;display:flex;flex-direction:column;gap:8px;}
+.ca-qrow{display:flex;align-items:center;gap:12px;background:#0b1222;border:1px solid #1e293b;border-radius:10px;padding:10px 12px;}
+.ca-qrow[data-state=running]{border-color:#92400e;}
+.ca-qpos{width:28px;height:28px;border-radius:50%;background:#1e293b;display:flex;align-items:center;justify-content:center;
+  font-weight:600;color:#fbbf24;flex:none;}
+.ca-qbody{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;}
+.ca-qbtns{display:flex;gap:6px;}
+.ca-cluster-head .ca-btn{padding:3px 10px;margin-right:6px;}
 @media (max-width:700px){.ca-field{grid-template-columns:1fr;}.ca-help{grid-column:1;}.ca-page{padding:12px;}}
 """
 

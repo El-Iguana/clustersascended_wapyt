@@ -131,8 +131,14 @@ def phase(server_id: str) -> str:
         return _overrides.get(server_id) or (_live.get(server_id) or Live()).phase
 
 
+def needs_of(server, settings) -> tuple[int, int]:
+    """(running need, startup need) from the map's measured runs."""
+    running, startup = store.need_samples(server.id)
+    return memlearn.needs(settings, server.need_override, running, startup)
+
+
 def need_of(server, settings) -> int:
-    return memlearn.need(settings, server.need_override, store.recent_peaks(server.id))
+    return needs_of(server, settings)[0]
 
 
 def snapshot() -> Snapshot:
@@ -145,10 +151,11 @@ def snapshot() -> Snapshot:
         for s in store.servers():
             lv = _live.get(s.id) or Live()
             running = lv.container_state == "running"
+            run_need, start_need = needs_of(s, settings)
             views[s.id] = ServerView(
                 id=s.id, name=s.name, cluster=s.cluster, priority=s.priority,
                 phase=_overrides.get(s.id) or lv.phase,
-                need=need_of(s, settings),
+                need=run_need, need_start=start_need,
                 actual=(lv.mem or {}).get("total") if running else None,
                 players=len(lv.players or []),
                 started_at=lv.started_at,

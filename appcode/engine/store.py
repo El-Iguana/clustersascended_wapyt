@@ -59,6 +59,15 @@ MIGRATIONS = [
     CREATE TABLE mods (id TEXT PRIMARY KEY, name TEXT NOT NULL DEFAULT '', note TEXT NOT NULL DEFAULT '',
         updated REAL NOT NULL);
     """,
+    # 4: startup and running memory are measured apart; jobs carry a stage
+    """
+    ALTER TABLE server_runs ADD COLUMN peak_start INTEGER;
+    ALTER TABLE server_runs ADD COLUMN settled INTEGER;
+    ALTER TABLE server_runs ADD COLUMN peak_run INTEGER;
+    ALTER TABLE jobs ADD COLUMN stage TEXT NOT NULL DEFAULT '';
+    ALTER TABLE jobs ADD COLUMN detail TEXT NOT NULL DEFAULT '';
+    ALTER TABLE jobs ADD COLUMN attempt INTEGER NOT NULL DEFAULT 0;
+    """,
 ]
 
 
@@ -178,6 +187,26 @@ def update_run(run_id: int, **fields) -> None:
 
 def bump_peak(run_id: int, total: int) -> None:
     conn().execute("UPDATE server_runs SET peak_total=MAX(COALESCE(peak_total, 0), ?) WHERE id=?",
+                   (int(total), run_id))
+
+
+def need_samples(server_id: str, limit: int = 5) -> tuple[list[int], list[int]]:
+    """
+    Measured memory of the last runs: (running samples, startup samples).
+    Running: the most a map held once fully started (settled or later, or the
+    "(xx GB Mem)" its log printed at ready). Startup: the most it held while
+    loading, up to the end of its settle period.
+    """
+    rows = conn().execute(
+        "SELECT ready_mem, settled, peak_run, peak_start FROM server_runs WHERE server=? "
+        "ORDER BY started_at DESC LIMIT ?", (server_id, limit)).fetchall()
+    running = [max(r[0] or 0, r[1] or 0, r[2] or 0) for r in rows]
+    startup = [r[3] for r in rows if r[3]]
+    return [v for v in running if v], startup
+
+
+def bump_run_peak(run_id: int, total: int) -> None:
+    conn().execute("UPDATE server_runs SET peak_run=MAX(COALESCE(peak_run, 0), ?) WHERE id=?",
                    (int(total), run_id))
 
 

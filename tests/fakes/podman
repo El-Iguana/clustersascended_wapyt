@@ -123,6 +123,8 @@ def main(argv):
         if current.exists():
             current.rename(current.with_name(f"ShooterGame-backup-{time.time_ns()}.log"))
         mode = c.get("on_start", "ready")
+        if c.get("on_start_seq"):          # e.g. ["exit", "ready"]: one per start
+            mode = c["on_start_seq"].pop(0)
         if mode == "exit":
             c["state"], c["exit_code"] = "exited", 1
         else:

@@ -29,7 +29,9 @@ class HostApi:
         active = store.jobs(limit=50, states=("queued", "running"))
         job_by_server = {}
         for j in reversed(active):
-            job_by_server[j["server"]] = j
+            if j["lane"] != "io":          # a backup does not change what the map can do
+                job_by_server[j["server"]] = j
+        names = {x.id: x.name for x in store.servers()}
         clusters = []
         for c in store.clusters():
             rows = []
@@ -41,6 +43,7 @@ class HostApi:
                     preview = admission.admit(snap, "start", srv.id, pending).to_dict()
                 job = job_by_server.get(srv.id)
                 rows.append({
+                    "need_start": v.start_need,
                     "id": srv.id, "name": srv.name, "map": srv.map_name, "session": srv.session_name,
                     "container": srv.container_name, "game_port": srv.game_port, "rcon_port": srv.rcon_port,
                     "priority": srv.priority, "phase": v.phase, "container_state": lv.container_state,
@@ -49,9 +52,11 @@ class HostApi:
                     "ready_at": lv.ready_at, "hang": lv.hang,
                     "flags": views.quick_flags(srv, c, s),
                     "preview": preview,
-                    "job": {"id": job["id"], "kind": job["kind"], "state": job["state"]} if job else None,
+                    "job": {"id": job["id"], "kind": job["kind"], "state": job["state"], "stage": job.get("stage"),
+                            "detail": job.get("detail"), "attempt": job.get("attempt")} if job else None,
                 })
-            committed = sum(r["need"] for r in rows if r["phase"] in ("starting", "ready", "stopping", "updating"))
+            committed = sum(admission.hold(snap.servers[r["id"]], r["phase"]) for r in rows
+                            if r["phase"] in ("starting", "ready", "stopping", "updating"))
             clusters.append({**_cluster_dict(c), "servers": rows, "committed": committed})
         return {
             "ok": True,
@@ -65,11 +70,15 @@ class HostApi:
                 "managed": managed, "external": max(0, host.used_total - managed),
                 "budget": budget, "reserve": s.reserve, "swap_allowance": s.swap_allowance,
                 "max_running": s.max_running,
-                "committed": sum(v.need for v in snap.servers.values()
+                "committed": sum(admission.hold(v, v.phase) for v in snap.servers.values()
                                  if v.phase in ("starting", "ready", "stopping", "updating")),
             },
             "clusters": clusters,
             "jobs": active,
+            "queue": [{"id": j["id"], "kind": j["kind"], "server": j["server"],
+                       "name": names.get(j["server"], j["server"]), "state": j["state"],
+                       "stage": j.get("stage"), "detail": j.get("detail"), "attempt": j.get("attempt"),
+                       "requested_by": j["requested_by"]} for j in supervisor.queue()],
         }
 
     def settings(self) -> dict:
@@ -87,8 +96,9 @@ class HostApi:
         gib_fields = ("swap_allowance", "reserve", "default_need", "warn_free", "crit_free")
         int_fields = ("max_running", "settle_s", "ready_timeout_s", "rcon_timeout_s",
                       "stop_timeout_s", "save_timeout_s", "update_timeout_s", "crit_sustain_s",
-                      "watchdog_cooldown_s")
-        float_fields = ("need_margin", "psi_crit")
+                      "watchdog_cooldown_s", "memory_recheck_s", "memory_wait_s", "start_attempts",
+                      "retry_delay_s")
+        float_fields = ("need_margin", "psi_crit", "startup_factor")
         bool_fields = ("watchdog_enabled", "crash_restart")
         try:
             for key in gib_fields:
@@ -105,6 +115,12 @@ class HostApi:
                     current[key] = values[key] in (True, "true", "on", "1", 1)
         except (TypeError, ValueError):
             return {"ok": False, "error": "Numbers only, please."}
+        if not 1.0 <= current["startup_factor"] <= 3.0:
+            return {"ok": False, "error": "The startup factor must be between 1.0 and 3.0."}
+        if not 1 <= current["start_attempts"] <= 5:
+            return {"ok": False, "error": "Tries per start: 1 to 5."}
+        if current["memory_recheck_s"] < 5:
+            return {"ok": False, "error": "Check memory at most every 5 seconds."}
         if current["crit_free"] >= current["warn_free"]:
             return {"ok": False, "error": "The critical level must be below the warning level."}
         if current["max_running"] < 1 or current["reserve"] < 0 or current["swap_allowance"] < 0:

@@ -118,3 +118,41 @@ def test_a_starting_map_still_growing_reserves_its_remainder():
 
 def test_gib_format():
     assert gib(41 * GiB) == "41.0 GiB"
+
+
+# -- startup vs running needs --------------------------------------------------
+
+def test_a_start_reserves_its_startup_need():
+    # 41 GiB budget; LC runs at 17; GEN needs 16 to run but 22 to start.
+    host = HostMem(31 * GiB, 14 * GiB, 34 * GiB, 34 * GiB)
+    s = snap({"lc": "ready", "gen": "stopped"}, needs={"lc": 17 * GiB, "gen": 16 * GiB},
+             actual={"lc": 17 * GiB}, host=host)
+    s.servers["gen"].need_start = 22 * GiB
+    d = admit(s, "start", "gen")
+    assert d.numbers["need"] == 22 * GiB and d.numbers["need_running"] == 16 * GiB
+    assert "needs 22.0 GiB to start (16.0 GiB once it is running)" in d.lines[0]
+
+
+def test_a_loading_map_holds_its_startup_need_until_it_is_up():
+    host = HostMem(31 * GiB, 20 * GiB, 34 * GiB, 34 * GiB)
+    s = snap({"lc": "starting", "gen": "stopped"}, needs={"lc": 17 * GiB, "gen": 10 * GiB},
+             actual={"lc": 6 * GiB}, host=host)
+    s.servers["lc"].need_start = 24 * GiB
+    d = admit(s, "start", "gen")
+    assert d.numbers["committed"] == 24 * GiB             # not its running 17, not its current 6
+    s.servers["lc"].phase = "ready"
+    s.servers["lc"].actual = 17 * GiB
+    d = admit(s, "start", "gen")
+    assert d.numbers["committed"] == 17 * GiB
+
+
+def test_never_fits():
+    from engine.admission import never_fits
+
+    host = HostMem(31 * GiB, 26 * GiB, 34 * GiB, 34 * GiB)
+    s = snap({"big": "stopped"}, needs={"big": 40 * GiB}, host=host)
+    s.servers["big"].need_start = 50 * GiB
+    assert "even with every map stopped" in never_fits(s, "big")
+    s.servers["big"].need_start = None
+    s.servers["big"].need = 16 * GiB
+    assert never_fits(s, "big") is None

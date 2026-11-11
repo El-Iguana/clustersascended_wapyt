@@ -17,6 +17,15 @@ from ui.common import Listeners, attr, closest, esc, failed, spawn, toast
 
 REFRESH_MS = 3000
 
+# What a start (or restart, update) is doing, in words.
+STAGES = {
+    "queued": "Waiting its turn", "running": "Starting", "waiting_memory": "Waiting for memory",
+    "preparing": "Getting ready", "loading": "Loading the world", "verifying": "Checking it answers",
+    "settling": "Settling", "measuring": "Measuring memory", "retrying": "Retrying",
+    "stopping": "Saving and stopping", "making_room": "Making room", "backing_up": "Backing up",
+}
+CANCELLABLE = ("start", "restart", "make_room_start", "update")
+
 # Map colours for the memory bar, by position in the cluster list.
 _COLOURS = ("#38bdf8", "#a78bfa", "#34d399", "#f472b6", "#fbbf24", "#60a5fa", "#fb923c", "#2dd4bf")
 
@@ -66,6 +75,8 @@ class DashboardView:
             parts.append(f'<div class="ca-banner" data-kind="{kind}"><span class="mdi mdi-memory"></span>'
                          f'{esc(wd.get("message"))}</div>')
         parts.append(self._memory(d))
+        if d.get("queue"):
+            parts.append(self._queue(d["queue"]))
         if not d.get("clusters"):
             parts.append('<div class="ca-card ca-empty">No clusters yet. '
                          '<a href="#/import">Import your existing compose cluster</a> to begin.</div>')
@@ -126,6 +137,32 @@ class DashboardView:
     <a href="#/host">Change the rules</a></div>
 </section>"""
 
+    def _queue(self, queue: list) -> str:
+        rows = []
+        for i, j in enumerate(queue, start=1):
+            what = j["kind"].replace("make_room_start", "make room and start").replace("_", " ")
+            stage = STAGES.get(j.get("stage") or j["state"], j.get("stage") or j["state"])
+            tries = f" · try {j['attempt']}" if (j.get("attempt") or 0) > 1 else ""
+            detail = esc(j.get("detail") or "")
+            cancel = (f'<button class="ca-btn" data-act="cancel" data-job="{j["id"]}">'
+                      f'{"Cancel" if j["state"] == "queued" else "Stop this start"}</button>'
+                      if j["kind"] in CANCELLABLE or j["state"] == "queued" else "")
+            rows.append(
+                f'<li class="ca-qrow" data-state="{esc(j["state"])}"><span class="ca-qpos">{i}</span>'
+                f'<div class="ca-qbody"><b>{esc(j["name"])}</b> <span class="ca-sub">{esc(what)}</span>'
+                f'<div><span class="ca-badge" data-kind="warn">{esc(stage)}</span>{tries} '
+                f'<span class="ca-sub">{detail}</span></div></div>'
+                f'<div class="ca-qbtns">{cancel}<a class="ca-btn" href="#/jobs/{j["id"]}">Log</a></div></li>')
+        more = ('<button class="ca-btn" data-act="cancel_queue">Cancel everything waiting</button>'
+                if sum(1 for j in queue if j["state"] == "queued") > 1 else "")
+        return f"""
+<section class="ca-card">
+  <div class="ca-host-head"><h2><span class="mdi mdi-format-list-numbered"></span> Start queue</h2>{more}</div>
+  <div class="ca-sub">One map at a time: each waits its turn, checks memory, starts fully and is measured
+    before the next one begins.</div>
+  <ol class="ca-queue">{"".join(rows)}</ol>
+</section>"""
+
     def _cluster(self, c: dict, colours: dict, host: dict) -> str:
         limits = []
         if c.get("max_running"):
@@ -142,7 +179,9 @@ class DashboardView:
       <div class="ca-sub">ClusterId <code>{esc(c["cluster_id"])}</code> · transfer folder <code>{esc(c["transfer_dir"])}</code>
         · {mods} shared mods{(' · ' + ', '.join(limits)) if limits else ''}</div>
     </div>
-    <div class="ca-sub"><a href="#/cluster/{esc(c["id"])}/settings"><span class="mdi mdi-tune"></span> Game settings</a>
+    <div class="ca-sub"><button class="ca-btn" data-act="start_cluster" data-cluster="{esc(c["id"])}">
+        <span class="mdi mdi-play-box-multiple-outline"></span> Start all</button>
+      <a href="#/cluster/{esc(c["id"])}/settings"><span class="mdi mdi-tune"></span> Game settings</a>
       · <a href="#/cluster/{esc(c["id"])}/mods"><span class="mdi mdi-puzzle-outline"></span> Mods</a>
       · {len(c["servers"])} maps · committed {gib(c["committed"])}</div>
   </div>
@@ -153,8 +192,9 @@ class DashboardView:
         label, kind = phase_label(s["phase"])
         job = s.get("job")
         if job:
-            label, kind = (f"{job['kind'].replace('_', ' ')} queued" if job["state"] == "queued"
-                           else label), "warn"
+            stage = job.get("stage") or job["state"]
+            label = "In the queue" if job["state"] == "queued" else STAGES.get(stage, label)
+            kind = "warn"
         mem = (f"{gib(s['actual'])} now · peak {gib(s['peak'])}" if s.get("actual")
                else "not running")
         players = s.get("players")
@@ -171,6 +211,8 @@ class DashboardView:
             uptime = f" · up {duration(js.Date.now() / 1000 - s['ready_at'])}"
         elif s["phase"] == "starting" and s.get("started_at"):
             uptime = f" · loading {duration(js.Date.now() / 1000 - s['started_at'])}"
+        if job and job.get("detail"):
+            uptime = f" · {esc(job['detail'])}"
         if s.get("hang"):
             uptime += ' · <span class="ca-warn">hang detected</span>'
 
@@ -189,25 +231,28 @@ class DashboardView:
         preview = ""
         p = s.get("preview")
         if p and not p["ok"]:
-            preview = (f'<div class="ca-refusal"><span class="mdi mdi-memory"></span> {esc(p["reason"])}'
+            preview = (f'<div class="ca-refusal"><span class="mdi mdi-memory"></span> {esc(p["reason"])} '
+                       f"Starting it now puts it in the queue, where it waits for memory."
                        f'<details><summary>Why</summary>{"".join(f"<div>{esc(x)}</div>" for x in p["lines"])}'
                        f"</details></div>")
         elif p and p["ok"]:
-            preview = f'<div class="ca-fits"><span class="mdi mdi-check"></span> Enough memory to start (needs about {gib(s["need"])})</div>'
+            preview = (f'<div class="ca-fits"><span class="mdi mdi-check"></span> Enough memory to start '
+                       f'(needs about {gib(s["need_start"])} while loading)</div>')
 
         buttons = []
         phase = s["phase"]
         sid = esc(s["id"])
-        if job and job["state"] == "queued":
-            buttons.append(f'<button class="ca-btn" data-act="cancel" data-job="{job["id"]}">Cancel</button>')
+        if job and (job["state"] == "queued" or job["kind"] in CANCELLABLE):
+            buttons.append(f'<button class="ca-btn" data-act="cancel" data-job="{job["id"]}">'
+                           f'{"Cancel" if job["state"] == "queued" else "Stop this start"}</button>')
         elif phase in ("stopped", "absent", "unknown") and not job:
             if p and not p["ok"] and p.get("victims"):
                 buttons.append(f'<button class="ca-btn ca-primary" data-act="make_room_start" data-id="{sid}">'
                                f'<span class="mdi mdi-swap-horizontal"></span> Make room and start</button>')
             buttons.append(f'<button class="ca-btn{" ca-primary" if not p or p["ok"] else ""}" data-act="start" '
-                           f'data-id="{sid}"{" disabled" if p and not p["ok"] else ""}>'
-                           f'<span class="mdi mdi-play"></span> Start</button>')
-        if phase in ("ready", "starting") and not (job and job["kind"] == "stop"):
+                           f'data-id="{sid}"><span class="mdi mdi-play"></span> '
+                           f'{"Start" if not p or p["ok"] else "Queue start"}</button>')
+        if phase in ("ready", "starting") and not job:
             if phase == "ready":
                 buttons.append(f'<button class="ca-btn" data-act="restart" data-id="{sid}">'
                                f'<span class="mdi mdi-restart"></span> Restart</button>')
@@ -226,7 +271,7 @@ class DashboardView:
     <span class="ca-badge" data-kind="{kind}">{esc(label)}</span>
   </header>
   <div class="ca-stats">
-    <div><span class="ca-k">Needs</span> {gib(s["need"])}</div>
+    <div><span class="ca-k">Needs</span> {gib(s["need"])} running · {gib(s["need_start"])} to start</div>
     <div><span class="ca-k">Memory</span> {mem}</div>
   </div>
   <div class="ca-sub">{uptime.lstrip(" ·")}</div>
@@ -248,6 +293,10 @@ class DashboardView:
         act = attr(btn, "data-act")
         if act == "cancel":
             spawn(self._cancel(int(attr(btn, "data-job"))), "cancel job")
+        elif act == "cancel_queue":
+            spawn(self._cancel_queue(), "cancel queue")
+        elif act == "start_cluster":
+            spawn(self._start_cluster(attr(btn, "data-cluster")), "start cluster")
         else:
             spawn(self._act(attr(btn, "data-id"), act), act)
 
@@ -279,13 +328,43 @@ class DashboardView:
                 return
         result = await ServerApi().act_async(sid, act)
         if result.get("ok"):
-            toast(f"{name}: {act.replace('_', ' ')} queued.", kind="success")
+            pos = result.get("position")
+            where = f" (number {pos} in the queue)" if pos and pos > 1 else ""
+            wait = " It will wait for memory." if result.get("waits") else ""
+            toast(f"{name}: {act.replace('_', ' ')} queued{where}.{wait}", kind="success")
         else:
             failed(result, f"{act} {name}")
         await self.refresh()
 
+    async def _start_cluster(self, cluster_id: str) -> None:
+        if not await message.confirm(
+                "Queue a start for every stopped map in this cluster, most important first?\n\n"
+                "Each one waits its turn, checks memory, starts fully and is measured before the next. "
+                "A map that never gets enough memory gives up after the wait limit.",
+                title="Start all", ok_text="Queue them"):
+            return
+        result = await ServerApi().start_cluster_async(cluster_id)
+        if not failed(result, "queue the starts"):
+            toast(f"Queued: {', '.join(result['queued']) or 'nothing (all running)'}.", kind="success")
+        await self.refresh()
+
+    async def _cancel_queue(self) -> None:
+        if not await message.confirm("Cancel every start that is still waiting its turn?",
+                                     title="Cancel the queue", ok_text="Cancel them", danger=True):
+            return
+        result = await ServerApi().cancel_queue_async()
+        if not failed(result, "cancel the queue"):
+            toast(f"Cancelled {result['cancelled']}.", kind="success")
+        await self.refresh()
+
     async def _cancel(self, job_id: int) -> None:
+        job = next((j for j in self.data.get("queue", []) if j["id"] == job_id), None)
+        if job and job["state"] == "running":
+            if not await message.confirm(f"Stop {job['name']}'s start? If it is already running it is "
+                                         "stopped again.", title="Stop this start", ok_text="Stop it",
+                                         danger=True):
+                return
         result = await JobsApi().cancel_async(job_id)
         if not failed(result, "cancel the job"):
-            toast("Cancelled.", kind="success")
+            toast("Cancelled." if result.get("was") == "queued" else "Stopping the start…", kind="success")
         await self.refresh()

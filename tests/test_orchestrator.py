@@ -42,7 +42,9 @@ def cluster_env(data_dir, fake_proc, tmp_path, monkeypatch):
     rcons = {sid: FakeRcon() for sid in ("lc", "ast", "gen")}
     containers = {}
     store.save_host_settings(models.HostSettings(settle_s=0, ready_timeout_s=5, rcon_timeout_s=3,
-                                                 stop_timeout_s=5))
+                                                 stop_timeout_s=5, swap_allowance=16 * GiB,
+                                                 memory_wait_s=1, memory_recheck_s=0.2,
+                                                 start_attempts=2, retry_delay_s=0))
     store.save_cluster(models.Cluster("main", "Main", "maincluster", str(tmp_path / "Cluster"),
                                       str(tmp_path), defaults={"admin_password": "adminsecret"}))
     (tmp_path / "Cluster").mkdir()
@@ -96,16 +98,18 @@ def log_of(job_id):
     return store.job_log_path(job_id).read_text()
 
 
-def test_starts_are_sequential_and_a_third_is_refused(cluster_env):
+def test_starts_queue_one_per_map_and_a_third_waits_then_gives_up(cluster_env):
     from engine import supervisor
 
     a = supervisor.enqueue("start", "lc")
     b = supervisor.enqueue("start", "ast")
-    assert a["ok"] and b["ok"]
     c = supervisor.enqueue("start", "gen")
-    assert not c["ok"]
-    assert "Not enough memory to start GEN" in c["error"]
-    assert c["job"]["state"] == "refused"
+    assert a["ok"] and b["ok"] and c["ok"]          # all queued: memory is checked at each turn
+    assert [a["position"], b["position"], c["position"]] == [1, 2, 3]
+    jc = wait_job(c["job"]["id"], timeout=30)
+    assert jc["state"] == "refused"
+    assert "Not enough memory to start GEN" in jc["summary"] and "Waited" in jc["summary"]
+    assert "Waiting for memory" in log_of(jc["id"])
 
     ja, jb = wait_job(a["job"]["id"]), wait_job(b["job"]["id"])
     assert ja["state"] == "done", log_of(ja["id"])
@@ -265,10 +269,9 @@ def test_autostart_brings_back_what_should_run(cluster_env):
         s.autostart, s.desired = True, "running"
         store.save_server(s)
     results = boot.autostart()
-    assert [r["ok"] for r in results] == [True, True, False]   # the third is refused
-    assert "Not enough memory" in results[2]["error"]
-    for r in results[:2]:
-        assert wait_job(r["job"]["id"])["state"] == "done"
+    assert [r["ok"] for r in results] == [True, True, True]     # one queue entry per map
+    states = [wait_job(r["job"]["id"], timeout=30)["state"] for r in results]
+    assert states == ["done", "done", "refused"]               # the third never got the memory
 
 
 def test_update_backs_up_boots_with_update_server_and_restores(cluster_env, tmp_path, monkeypatch):
@@ -294,3 +297,75 @@ def test_update_backs_up_boots_with_update_server_and_restores(cluster_env, tmp_
     assert envs[0]["containers"]["asa-lc"]["env"]["UPDATE_SERVER"] == "FALSE"
     assert len(seen) == 2       # an update-pass container, then the normal one again
     assert "updated to build 200" in j["summary"]
+
+
+
+# -- the start queue: stages, waiting, retries, cancelling -------------------------
+
+def test_a_waiting_start_goes_once_memory_is_freed(cluster_env):
+    from engine import store, supervisor
+
+    for sid in ("lc", "ast"):
+        assert wait_job(supervisor.enqueue("start", sid)["job"]["id"])["state"] == "done"
+    s = store.host_settings()
+    s.memory_wait_s = 20
+    store.save_host_settings(s)
+    gen = supervisor.enqueue("start", "gen")
+    assert gen["ok"] and gen["waits"]
+    end = time.time() + 10
+    while store.job(gen["job"]["id"])["stage"] != "waiting_memory" and time.time() < end:
+        time.sleep(0.05)
+    assert "Not enough memory" in store.job(gen["job"]["id"])["detail"]
+    assert wait_job(supervisor.enqueue("stop", "ast")["job"]["id"])["state"] == "done"
+    j = wait_job(gen["job"]["id"], timeout=30)
+    assert j["state"] == "done" and j["stage"] == "done", log_of(j["id"])
+
+
+def test_a_failed_load_is_retried(cluster_env):
+    from engine import supervisor
+
+    cluster_env["configure"]("asa-lc", on_start_seq=["exit", "ready"])
+    j = wait_job(supervisor.enqueue("start", "lc")["job"]["id"], timeout=30)
+    assert j["state"] == "done", log_of(j["id"])
+    assert "Attempt 1 of 2 failed" in log_of(j["id"])
+    assert j["attempt"] == 2
+    assert [c[1] for c in cluster_env["calls"]() if c[0] == "start"] == ["asa-lc", "asa-lc"]
+
+
+def test_retries_are_limited(cluster_env):
+    from engine import supervisor
+
+    cluster_env["configure"]("asa-lc", on_start="exit")
+    j = wait_job(supervisor.enqueue("start", "lc")["job"]["id"], timeout=30)
+    assert j["state"] == "failed" and "exited while loading" in j["summary"]
+    assert len([c for c in cluster_env["calls"]() if c[0] == "start"]) == 2
+
+
+def test_cancelling_a_loading_start_stops_the_map(cluster_env):
+    from engine import supervisor
+
+    cluster_env["configure"]("asa-lc", on_start="silent")
+    j = supervisor.enqueue("start", "lc")["job"]
+    end = time.time() + 10
+    from engine import store
+    while store.job(j["id"])["stage"] != "loading" and time.time() < end:
+        time.sleep(0.05)
+    assert supervisor.cancel(j["id"]) == {"ok": True, "was": "running"}
+    done = wait_job(j["id"])
+    assert done["state"] == "cancelled"
+    assert ("stop", "asa-lc") in [(c[0], c[-1]) for c in cluster_env["calls"]()]
+    assert "Cancelled: stopping" in log_of(j["id"])
+
+
+def test_cancelling_queued_starts(cluster_env):
+    from engine import supervisor
+
+    cluster_env["configure"]("asa-lc", on_start="silent")
+    first = supervisor.enqueue("start", "lc")["job"]
+    second = supervisor.enqueue("start", "ast")["job"]
+    assert supervisor.cancel(second["id"]) == {"ok": True, "was": "queued"}
+    assert supervisor.cancel_queue() == 0
+    supervisor.cancel(first["id"])
+    assert wait_job(first["id"])["state"] == "cancelled"
+    from engine import store
+    assert store.job(second["id"])["state"] == "cancelled"

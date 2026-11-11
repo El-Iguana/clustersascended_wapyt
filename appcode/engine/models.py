@@ -26,8 +26,14 @@ class HostSettings:
     swap_allowance: int = 12 * GiB      # swap the budget may count on
     reserve: int = 2 * GiB              # never handed out (desktop, this app)
     max_running: int = 2                # belt and braces on top of the budget
-    default_need: int = 16 * GiB        # floor for a server's memory need
-    need_margin: float = 1.10           # learned peak × this = need
+    default_need: int = 16 * GiB        # running need of a map with no measured runs yet
+    need_margin: float = 1.10           # measured peak × this = need
+    startup_factor: float = 1.25        # starting always reserves at least this × the running need
+    # The start queue: each start waits its turn, re-checks memory, starts fully, is measured.
+    memory_recheck_s: int = 30          # while waiting for memory, check again this often
+    memory_wait_s: int = 900            # give up waiting for memory after this long
+    start_attempts: int = 2             # tries per start (a crash or hang while loading retries)
+    retry_delay_s: int = 30             # pause before a retry
     settle_s: int = 60                  # wait after "ready" before the next start
     ready_timeout_s: int = 1200         # start → advertising for join
     rcon_timeout_s: int = 180           # ready → RCON answers

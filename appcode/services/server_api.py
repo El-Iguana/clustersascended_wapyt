@@ -29,6 +29,25 @@ class ServerApi:
             clean = {"kind": "manual", "note": str(p.get("note") or "")[:200]}
         return supervisor.enqueue(action, str(server_id), requested_by=actor(self._user), params=clean)
 
+    def start_cluster(self, cluster_id: str) -> dict:
+        """Queue a start for each stopped map of the cluster, most important first."""
+        from engine import state, store, supervisor
+        from services.auth import actor
+
+        queued, refused = [], []
+        for s in sorted(store.servers(str(cluster_id)), key=lambda s: s.priority):
+            if state.phase(s.id) not in ("stopped", "absent"):
+                continue
+            r = supervisor.enqueue("start", s.id, requested_by=actor(self._user))
+            (queued if r.get("ok") else refused).append(s.name if r.get("ok") else f"{s.name}: {r.get('error')}")
+        return {"ok": bool(queued) or not refused, "queued": queued, "refused": refused,
+                "error": "; ".join(refused)}
+
+    def cancel_queue(self) -> dict:
+        from engine import supervisor
+
+        return {"ok": True, "cancelled": supervisor.cancel_queue()}
+
     def detail(self, server_id: str) -> dict:
         from engine import views
 

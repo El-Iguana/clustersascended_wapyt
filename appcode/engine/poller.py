@@ -112,6 +112,8 @@ def _update(server, cluster, now: float) -> None:
             lv.started_at = c["started_at"]
             lv.ready_at, lv.ready_mem, lv.hang = None, None, False
             lv.cgroup, lv.peak, lv.players = "", 0, None
+            for k in ("peak_run", "peak_run_recorded", "peak_recorded"):
+                lv.extra.pop(k, None)
             _followers.pop(server.id, None)
 
     running = lv.container_state == "running"
@@ -123,6 +125,10 @@ def _update(server, cluster, now: float) -> None:
         lv.mem = meminfo.read_container(lv.cgroup)
         if lv.mem:
             lv.peak = max(lv.peak, lv.mem["total"])
+            # Its running peak only counts once it is fully started and settled.
+            settle = store.host_settings().settle_s
+            if lv.ready_at and now - lv.ready_at >= settle and state.override(server.id) is None:
+                lv.extra["peak_run"] = max(lv.extra.get("peak_run", 0), lv.mem["total"])
         if lv.ready_at and cluster and now - lv.players_at >= _players_every():
             _poll_players(server, cluster, lv, now)
     else:
@@ -189,6 +195,10 @@ def _record_run(server, lv, running: bool, now: float) -> None:
         if lv.peak and lv.peak > lv.extra.get("peak_recorded", 0) + 64 * 1024 ** 2:
             store.bump_peak(lv.run_id, lv.peak)
             lv.extra["peak_recorded"] = lv.peak
+        run_peak = lv.extra.get("peak_run", 0)
+        if run_peak and run_peak > lv.extra.get("peak_run_recorded", 0) + 64 * 1024 ** 2:
+            store.bump_run_peak(lv.run_id, run_peak)
+            lv.extra["peak_run_recorded"] = run_peak
     elif lv.run_id is not None or store.open_run_for(server.id) is not None:
         run_id = lv.run_id or store.open_run_for(server.id)["id"]
         reason = state.pop_end_reason(server.id)

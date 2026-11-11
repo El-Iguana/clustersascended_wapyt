@@ -124,7 +124,7 @@ class ServerView:
   <details class="ca-more ca-sub"><summary>Details</summary>{esc(s["map_name"])} · port {s["game_port"]} · RCON {s["rcon_port"]}
   · container <code>{esc(s["container_name"])}</code>{" (app)" if cont.get("managed") else " (compose)" if cont.get("exists") else ""}</details></div>
 <div class="ca-stats">
-  <div><span class="ca-k">Needs</span> {gib(d["need"])}</div><div><span class="ca-k">Memory</span> {mem}</div>
+  <div><span class="ca-k">Needs</span> {gib(d["need"])} running · {gib(d.get("need_start"))} to start</div><div><span class="ca-k">Memory</span> {mem}</div>
   <div><span class="ca-k">Players</span> {who}</div><div><span class="ca-k">Up</span> {up}</div>
   <div><span class="ca-k">Build</span> {esc(build.get("installed") or "?")}</div>
 </div>

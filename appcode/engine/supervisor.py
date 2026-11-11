@@ -9,9 +9,13 @@ Two lanes, one worker each:
 * ``stop``: graceful stops. They only free memory, so they never wait behind
   a 20-minute start; a stop of a map that is still starting aborts that start.
 
-Admission runs twice: here, against the state after everything already
-queued (an impossible request is refused at once, never queued), and again
-in the job, against a fresh snapshot, right before podman starts anything.
+Starts form a queue, one entry per map. A start is not refused for memory
+here (only one that could never fit, even with every other map stopped):
+it waits its turn, then re-checks memory against what is really running
+(waiting, with a limit, if it does not fit yet), starts fully, settles and
+is measured, and only then does the next start begin. Each job records its
+stage, so the page can show where every start is, and any start can be
+cancelled: queued ones are dropped, a running one is stopped.
 """
 from __future__ import annotations
 
@@ -32,6 +36,7 @@ _enqueue_lock = threading.Lock()
 _aborts_lock = threading.Lock()
 _wake = {lane: threading.Event() for lane in LANES}
 _aborts: dict[str, threading.Event] = {}
+_cancels: set[int] = set()
 _threads: dict[str, threading.Thread] = {}
 _stop = threading.Event()
 
@@ -51,6 +56,27 @@ class JobLog:
 def abort_flag(server_id: str) -> threading.Event:
     with _aborts_lock:
         return _aborts.setdefault(server_id, threading.Event())
+
+
+def set_stage(job_id: int | None, stage: str, detail: str = "", attempt: int | None = None) -> None:
+    """Where a job is now (shown on the page)."""
+    if not job_id:
+        return
+    fields = {"stage": stage, "detail": detail[:300]}
+    if attempt is not None:
+        fields["attempt"] = attempt
+    store.set_job(job_id, **fields)
+
+
+def cancel_requested(job_id: int | None) -> bool:
+    with _aborts_lock:
+        return bool(job_id) and job_id in _cancels
+
+
+def queue() -> list[dict]:
+    """The lifecycle lane in order: the running job first, then the queued ones."""
+    jobs = [j for j in store.jobs(limit=200, states=ACTIVE) if j["lane"] == "lifecycle"]
+    return sorted(jobs, key=lambda j: (j["state"] != "running", j["id"]))
 
 
 def pending() -> list[tuple[str, str]]:
@@ -90,6 +116,7 @@ def enqueue(kind: str, server_id: str, requested_by: str = "admin", params: dict
             check = "start" if kind == "make_room_start" else kind
             if kind == "restart" and snap.servers[server_id].phase not in ("ready", "starting"):
                 check = kind = "start"     # restarting a stopped map is a start
+            refusal = admission.never_fits(snap, server_id)
             decision = admission.admit(snap, check, server_id, pending())
             if kind == "make_room_start":
                 if decision.ok:
@@ -97,34 +124,57 @@ def enqueue(kind: str, server_id: str, requested_by: str = "admin", params: dict
                 elif decision.victims:
                     params["victims"] = decision.victims
                 else:
-                    decision.reason += " Stopping other maps would not make enough room."
-            room_ok = bool(decision.victims) and (
-                kind == "make_room_start" or (kind == "update" and params.get("make_room")))
-            if not decision.ok and not room_ok:
+                    refusal = refusal or (decision.reason + " Stopping other maps would not make enough room.")
+            if refusal:
                 job_id = store.add_job(KIND_LANE[kind], kind, server_id, params, requested_by,
-                                       state="refused", summary=decision.reason)
-                store.set_job(job_id, finished=time.time())
-                JobLog(job_id)("Refused. " + " ".join(decision.lines))
+                                       state="refused", summary=refusal)
+                store.set_job(job_id, finished=time.time(), stage="refused")
+                JobLog(job_id)("Refused. " + refusal + " " + " ".join(decision.lines))
                 store.audit(requested_by, f"refused {kind}", server_id, decision.to_dict())
-                return {"ok": False, "error": decision.reason, "decision": decision.to_dict(),
+                return {"ok": False, "error": refusal, "decision": decision.to_dict(),
                         "job": store.job(job_id)}
         if kind == "stop":
             # A stop wins over a start still loading the same map.
             abort_flag(server_id).set()
         job_id = store.add_job(KIND_LANE[kind], kind, server_id, params, requested_by)
+        store.set_job(job_id, stage="queued")
         store.audit(requested_by, kind, server_id, params)
     _wake[KIND_LANE[kind]].set()
-    return {"ok": True, "job": store.job(job_id),
+    position = next((i for i, j in enumerate(queue(), start=1) if j["id"] == job_id), None)
+    return {"ok": True, "job": store.job(job_id), "position": position,
+            "waits": bool(decision and not decision.ok),
             "decision": decision.to_dict() if decision else None}
 
 
+CANCELLABLE = frozenset({"start", "restart", "make_room_start", "update"})
+
+
 def cancel(job_id: int) -> dict:
+    """Drop a queued job, or stop a start that is running (the map is stopped again)."""
     with _enqueue_lock:
         j = store.job(job_id)
-        if j is None or j["state"] != "queued":
-            return {"ok": False, "error": "Only queued jobs can be cancelled."}
-        store.set_job(job_id, state="cancelled", finished=time.time())
-    return {"ok": True}
+        if j is None or j["state"] not in ACTIVE:
+            return {"ok": False, "error": "That job is not queued or running."}
+        if j["state"] == "queued":
+            store.set_job(job_id, state="cancelled", finished=time.time(), stage="cancelled",
+                          summary="Cancelled before it started.")
+            return {"ok": True, "was": "queued"}
+        if j["kind"] not in CANCELLABLE:
+            return {"ok": False, "error": f"A running {j['kind']} cannot be cancelled."}
+        with _aborts_lock:
+            _cancels.add(job_id)
+        abort_flag(j["server"]).set()
+        store.set_job(job_id, detail="Cancelling…")
+    return {"ok": True, "was": "running"}
+
+
+def cancel_queue() -> int:
+    """Drop every queued start (the running one carries on)."""
+    n = 0
+    for j in queue():
+        if j["state"] == "queued" and cancel(j["id"]).get("ok"):
+            n += 1
+    return n
 
 
 def start_workers() -> None:
@@ -176,6 +226,7 @@ def run_job(j: dict) -> dict:
     if j["kind"] != "stop":
         abort_flag(j["server"]).clear()
     final, summary = "done", ""
+    set_stage(j["id"], "running")
     try:
         summary = lifecycle.run(j, log) or log.last
     except lifecycle.Refused as exc:
@@ -188,5 +239,7 @@ def run_job(j: dict) -> dict:
         final, summary = "failed", str(exc) or exc.__class__.__name__
         log(f"Failed: {summary}")
         log(traceback.format_exc())
-    store.set_job(j["id"], state=final, finished=time.time(), summary=summary[:500])
+    with _aborts_lock:
+        _cancels.discard(j["id"])
+    store.set_job(j["id"], state=final, finished=time.time(), summary=summary[:500], stage=final, detail="")
     return store.job(j["id"])

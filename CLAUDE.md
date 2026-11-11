@@ -44,6 +44,19 @@ in `~/asa-cluster`). Full plan: `~/.claude/plans/tender-meandering-panda.md`.
   exists to prevent that.
 - Stops run on their own `stop` lane and abort a start still loading the
   same map (`supervisor.abort_flag`).
+- **Two needs per map** (`memlearn.needs`): running need = margin × the highest recent
+  *running* sample (settled after the start, peak after settle, or the log's ready reading;
+  `default_need` until measured); startup need = max(startup_factor × running need,
+  margin × measured startup peak) — a start is always assumed to take more than running.
+  A loading map holds its startup need in admission; it drops to its running need only once
+  fully started (`admission.hold`).
+- **The start queue** (2026-11-11): starts are not refused for memory at enqueue (only one that
+  could never fit with every map stopped: `admission.never_fits`). Each start job, in turn:
+  waits for memory (re-check every `memory_recheck_s`, give up after `memory_wait_s` → refused)
+  → prepares (container, ini) → loads → verifies (RCON) → settles → measures (records
+  `peak_start` and `settled` on the run) → done; then the next one starts. A failed load stops
+  the map and retries up to `start_attempts`. `jobs.stage/detail/attempt` track it for the page.
+  `supervisor.cancel` drops a queued job or stops a running start (the map is stopped again).
 
 ## Game settings and mods (2026-11-11)
 
