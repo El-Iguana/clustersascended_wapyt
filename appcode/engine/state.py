@@ -107,6 +107,13 @@ def pop_app_start(server_id: str) -> bool:
         return False
 
 
+def forget_run(server_id: str) -> None:
+    """Before a start: drop the previous run's readiness so only a fresh line counts."""
+    with _lock:
+        lv = _live.setdefault(server_id, Live())
+        lv.started_at, lv.ready_at, lv.ready_mem, lv.hang = 0.0, None, None, False
+
+
 def request_refresh() -> None:
     """Ask the poller to re-list containers on its next tick."""
     _refresh.set()

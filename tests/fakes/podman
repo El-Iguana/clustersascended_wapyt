@@ -44,9 +44,45 @@ def main(argv):
         fh.write(" ".join(argv) + "\n")
     if cmd == "ps":
         out = [{"Names": [n], "State": c["state"], "StartedAt": c.get("started_at", 0),
-                "Id": "id-" + n, "ExitCode": c.get("exit_code", 0), "Labels": {}}
+                "Id": "id-" + n, "ExitCode": c.get("exit_code", 0), "Labels": c.get("labels") or {}}
                for n, c in data["containers"].items()]
         print(json.dumps(out))
+        return 0
+    if cmd == "create":
+        args = argv[1:]
+        name, labels, mounts, env_file = None, {}, {}, None
+        i = 0
+        while i < len(args):
+            a = args[i]
+            if a == "--name":
+                name = args[i + 1]; i += 2; continue
+            if a == "--label":
+                k, _, v = args[i + 1].partition("="); labels[k] = v; i += 2; continue
+            if a == "-v":
+                src, _, dst = args[i + 1].partition(":"); mounts[dst] = src; i += 2; continue
+            if a == "--env-file":
+                env_file = args[i + 1]; i += 2; continue
+            if a.startswith("--"):
+                i += 2; continue
+            i += 1
+        if name in data["containers"]:
+            print(f"Error: the container name \"{name}\" is already in use", file=sys.stderr)
+            return 125
+        env = dict(line.split("=", 1) for line in Path(env_file).read_text().splitlines() if "=" in line)
+        template = data.get("defaults", {}).get(name, {})
+        data["containers"][name] = {**template, "state": "created", "started_at": 0, "labels": labels,
+                                    "saved_dir": mounts["/home/pok/arkserver/ShooterGame/Saved"],
+                                    "env": env, "argv": argv}
+        save(data)
+        print("id-" + name)
+        return 0
+    if cmd == "rename":
+        old, new = argv[1], argv[2]
+        if old not in data["containers"] or new in data["containers"]:
+            print("Error: rename refused", file=sys.stderr)
+            return 125
+        data["containers"][new] = data["containers"].pop(old)
+        save(data)
         return 0
     name = argv[-1]
     c = data["containers"].get(name)
@@ -55,12 +91,28 @@ def main(argv):
         return 125
     if cmd == "inspect":
         print(json.dumps([{"Name": name, "State": {"Status": c["state"], "Running": c["state"] == "running",
-                                                   "CgroupPath": ""}}]))
+                                                   "CgroupPath": "", "ExitCode": c.get("exit_code", 0)},
+                           "Config": {"Labels": c.get("labels") or {}}}]))
+        return 0
+    if cmd == "rm":
+        if c["state"] == "running":
+            print("Error: container is running", file=sys.stderr)
+            return 2
+        del data["containers"][name]
+        save(data)
+        return 0
+    if cmd == "crash":   # test helper: the process dies on its own
+        c["state"], c["exit_code"] = "exited", 139
+        save(data)
         return 0
     if cmd == "start":
         if c.get("start_delay"):
             time.sleep(c["start_delay"])
         c["started_at"] = int(time.time())
+        # ASA starts a fresh ShooterGame.log on every boot.
+        current = Path(c["saved_dir"]) / "Logs" / "ShooterGame.log"
+        if current.exists():
+            current.rename(current.with_name(f"ShooterGame-backup-{time.time_ns()}.log"))
         mode = c.get("on_start", "ready")
         if mode == "exit":
             c["state"], c["exit_code"] = "exited", 1

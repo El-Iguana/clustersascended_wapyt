@@ -22,9 +22,10 @@ from datetime import datetime
 
 from engine import admission, state, store
 
-LANES = ("lifecycle", "stop")
+LANES = ("lifecycle", "stop", "io")
 KIND_LANE = {"start": "lifecycle", "restart": "lifecycle", "make_room_start": "lifecycle",
-             "stop": "stop"}
+             "adopt": "lifecycle", "rollback": "lifecycle", "update": "lifecycle",
+             "stop": "stop", "backup": "io"}
 ACTIVE = ("queued", "running")
 
 _enqueue_lock = threading.Lock()
@@ -59,7 +60,7 @@ def pending() -> list[tuple[str, str]]:
         if j["kind"] == "make_room_start":
             out += [("stop", v) for v in j["params"].get("victims", [])]
             out.append(("start", j["server"]))
-        else:
+        elif j["kind"] in admission.START_KINDS or j["kind"] == "stop":
             out.append((j["kind"], j["server"]))
     return out[::-1]
 
@@ -73,7 +74,11 @@ def enqueue(kind: str, server_id: str, requested_by: str = "admin", params: dict
         return {"ok": False, "error": "Unknown server."}
     params = dict(params or {})
     with _enqueue_lock:
-        busy = [j for j in store.jobs(limit=200, states=ACTIVE) if j["server"] == server_id]
+        busy = [j for j in store.jobs(limit=200, states=ACTIVE)
+                if j["server"] == server_id and j["lane"] != "io"]
+        if kind == "backup":
+            busy = [j for j in store.jobs(limit=200, states=ACTIVE)
+                    if j["server"] == server_id and j["kind"] == "backup"]
         if kind != "stop" and busy:
             return {"ok": False, "error": f"{server.name} already has a {busy[0]['kind']} job "
                                           f"{busy[0]['state']}."}
@@ -93,7 +98,9 @@ def enqueue(kind: str, server_id: str, requested_by: str = "admin", params: dict
                     params["victims"] = decision.victims
                 else:
                     decision.reason += " Stopping other maps would not make enough room."
-            if not decision.ok and kind != "make_room_start":
+            room_ok = bool(decision.victims) and (
+                kind == "make_room_start" or (kind == "update" and params.get("make_room")))
+            if not decision.ok and not room_ok:
                 job_id = store.add_job(KIND_LANE[kind], kind, server_id, params, requested_by,
                                        state="refused", summary=decision.reason)
                 store.set_job(job_id, finished=time.time())
@@ -130,10 +137,18 @@ def start_workers() -> None:
         _threads[lane].start()
 
 
-def stop_workers() -> None:
+def stop_workers(timeout: float = 30) -> bool:
+    """Stop the lanes; a start still waiting is aborted. True when all exited."""
     _stop.set()
+    with _aborts_lock:
+        for flag in _aborts.values():
+            flag.set()
     for e in _wake.values():
         e.set()
+    deadline = time.time() + timeout
+    for t in list(_threads.values()):
+        t.join(max(0.0, deadline - time.time()))
+    return not any(t.is_alive() for t in _threads.values())
 
 
 def recover() -> None:

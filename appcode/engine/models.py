@@ -33,6 +33,15 @@ class HostSettings:
     rcon_timeout_s: int = 180           # ready → RCON answers
     stop_timeout_s: int = 300           # SIGTERM grace for ASA to flush its save
     save_timeout_s: int = 180           # RCON saveworld
+    update_timeout_s: int = 2400        # an update pass: SteamCMD download + first load
+    # Watchdog: act before the kernel's OOM killer does.
+    watchdog_enabled: bool = True
+    warn_free: int = 6 * GiB            # free RAM + free swap below this: warn
+    crit_free: int = 3 * GiB            # below this, sustained: save and stop a map
+    crit_sustain_s: int = 20
+    psi_crit: float = 40.0              # % of time all tasks stalled on memory (avg10)
+    watchdog_cooldown_s: int = 300
+    crash_restart: bool = True          # bring a crashed map back (through admission)
     image: str = "docker.io/acekorneya/asa_server:2_1_latest"
     puid: int = 7777
     pgid: int = 7777
@@ -78,7 +87,8 @@ class Server:
     priority: int = 5                    # 1 = most important
     autostart: bool = False
     need_override: Optional[int] = None  # bytes
-    desired: str = "stopped"
+    desired: str = "stopped"             # what the admin last asked for
+    held: str = ""                       # why autostart/crash restarts are paused ("" = not)
 
     def to_dict(self) -> dict:
         return asdict(self)

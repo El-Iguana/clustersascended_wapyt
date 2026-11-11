@@ -46,6 +46,14 @@ MIGRATIONS = [
         id INTEGER PRIMARY KEY AUTOINCREMENT, ts REAL NOT NULL, actor TEXT NOT NULL,
         action TEXT NOT NULL, target TEXT NOT NULL DEFAULT '', detail TEXT NOT NULL DEFAULT '{}');
     """,
+    # 2
+    """
+    CREATE TABLE backups (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, server TEXT NOT NULL, cluster TEXT NOT NULL,
+        kind TEXT NOT NULL, path TEXT NOT NULL, size INTEGER NOT NULL, created REAL NOT NULL,
+        build_id TEXT, pinned INTEGER NOT NULL DEFAULT 0, note TEXT NOT NULL DEFAULT '');
+    CREATE INDEX backups_server ON backups(server, created DESC);
+    """,
 ]
 
 
@@ -221,6 +229,33 @@ def job_log_path(job_id: int) -> Path:
     d = paths.data_dir() / "jobs"
     d.mkdir(parents=True, exist_ok=True)
     return d / f"{job_id}.log"
+
+
+# -- backups ------------------------------------------------------------------
+
+def add_backup(server_id: str, cluster_id: str, kind: str, path: str, size: int,
+               build_id: Optional[str], note: str = "") -> int:
+    cur = conn().execute(
+        "INSERT INTO backups(server, cluster, kind, path, size, created, build_id, note) "
+        "VALUES(?, ?, ?, ?, ?, ?, ?, ?)",
+        (server_id, cluster_id, kind, path, size, time.time(), build_id, note))
+    return int(cur.lastrowid)
+
+
+def backups(server_id: Optional[str] = None, limit: int = 100) -> list[dict]:
+    sql, args = "SELECT * FROM backups", []
+    if server_id:
+        sql += " WHERE server=?"
+        args.append(server_id)
+    rows = conn().execute(sql + " ORDER BY created DESC LIMIT ?", (*args, limit)).fetchall()
+    return [dict(r) for r in rows]
+
+
+def recent_runs(server_id: str, since: float) -> list[dict]:
+    rows = conn().execute(
+        "SELECT * FROM server_runs WHERE server=? AND started_at>=? AND source!='import' "
+        "ORDER BY started_at DESC", (server_id, since)).fetchall()
+    return [dict(r) for r in rows]
 
 
 # -- audit --------------------------------------------------------------------

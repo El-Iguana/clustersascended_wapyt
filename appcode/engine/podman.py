@@ -86,6 +86,18 @@ def start(name: str) -> None:
     run(["start", name], timeout=120)
 
 
+def create(argv: list[str]) -> None:
+    run(argv, timeout=120)
+
+
+def remove(name: str) -> None:
+    run(["rm", name], timeout=120)
+
+
+def rename(old: str, new: str) -> None:
+    run(["rename", old, new], timeout=60)
+
+
 def stop(name: str, grace: int) -> str:
     """Stop with a long grace; returns stderr (podman says when it had to SIGKILL)."""
     cp = run(["stop", "-t", str(grace), name], timeout=grace + 120)

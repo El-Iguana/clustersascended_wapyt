@@ -22,7 +22,26 @@ def start_engine() -> None:
             print(f"[clusters-ascended] first poll failed: {exc!r}", flush=True)
         poller.start()
         supervisor.start_workers()
+        autostart()
         _started = True
+
+
+def autostart() -> list[dict]:
+    """
+    After a reboot (or an app restart), bring back the maps that should be
+    running, most important first. Each goes through the queue, so through
+    admission and the one-at-a-time gate.
+    """
+    from engine import state
+
+    results = []
+    for s in sorted(store.servers(), key=lambda s: s.priority):
+        if not s.autostart or s.desired != "running" or s.held:
+            continue
+        if state.phase(s.id) not in ("stopped", "absent"):
+            continue
+        results.append(supervisor.enqueue("start", s.id, requested_by="boot"))
+    return results
 
 
 def started() -> bool:

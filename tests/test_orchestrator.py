@@ -32,6 +32,11 @@ def cluster_env(data_dir, fake_proc, tmp_path, monkeypatch):
     # Fresh live state per test.
     state._live.clear()
     state._overrides.clear()
+    state._end_reasons.clear()
+    state._app_starts.clear()
+    supervisor._aborts.clear()
+    from engine import watchdog
+    watchdog.reset()
     poller._followers.clear()
 
     rcons = {sid: FakeRcon() for sid in ("lc", "ast", "gen")}
@@ -40,9 +45,11 @@ def cluster_env(data_dir, fake_proc, tmp_path, monkeypatch):
                                                  stop_timeout_s=5))
     store.save_cluster(models.Cluster("main", "Main", "maincluster", str(tmp_path / "Cluster"),
                                       str(tmp_path), defaults={"admin_password": "adminsecret"}))
+    (tmp_path / "Cluster").mkdir()
     for prio, sid in enumerate(("lc", "ast", "gen"), start=1):
         saved = tmp_path / f"Instance_{sid}" / "Saved"
         (saved / "Logs").mkdir(parents=True)
+        (tmp_path / sid).mkdir()
         containers[f"asa-{sid}"] = {"state": "exited", "started_at": 0, "saved_dir": str(saved),
                                     "on_start": "ready"}
         store.save_server(models.Server(sid, "main", sid.upper(), f"{sid}_WP", sid, f"asa-{sid}",
@@ -63,11 +70,10 @@ def cluster_env(data_dir, fake_proc, tmp_path, monkeypatch):
     poller.start()
     supervisor.start_workers()
     yield {"configure": configure, "calls": calls, "rcons": rcons}
-    supervisor.stop_workers()
+    assert supervisor.stop_workers(timeout=30), "a lane did not stop"
     poller.stop()
-    for t in list(supervisor._threads.values()) + [poller._thread]:
-        if t:
-            t.join(timeout=5)
+    if poller._thread:
+        poller._thread.join(timeout=10)
     for r in rcons.values():
         r.close()
 
@@ -170,9 +176,121 @@ def test_runs_are_recorded_and_seed_the_need(cluster_env):
     from engine import state, store, supervisor
 
     cluster_env["configure"]("asa-lc", ready_gb=17.0)
-    assert wait_job(supervisor.enqueue("start", "lc")["job"]["id"])["state"] == "done"
+    j = wait_job(supervisor.enqueue("start", "lc")["job"]["id"])
+    assert j["state"] == "done", log_of(j["id"])
     time.sleep(0.3)
     peaks = store.recent_peaks("lc")
     assert peaks and peaks[0] == int(17.0 * GiB)
     s = store.server("lc")
     assert state.need_of(s, store.host_settings()) == int(17.0 * GiB * 1.10)
+
+
+# -- phase 2: ownership, recovery, updates -------------------------------------
+
+def podman_state(tmp_path):
+    return json.loads((tmp_path / "podman" / "state.json").read_text())
+
+
+def test_adopt_replaces_the_compose_container_and_rollback_restores_it(cluster_env, tmp_path):
+    from engine import store, supervisor
+
+    j = wait_job(supervisor.enqueue("adopt", "gen")["job"]["id"])
+    assert j["state"] == "done", log_of(j["id"])
+    containers = podman_state(tmp_path)["containers"]
+    assert "asa-gen.compose-old" in containers
+    new = containers["asa-gen"]
+    assert new["labels"]["io.clustersascended.managed"] == "1"
+    assert new["env"]["MAP_NAME"] == "gen_WP" and new["env"]["SERVER_ADMIN_PASSWORD"] == "adminsecret"
+    assert "--restart" in new["argv"] and new["argv"][new["argv"].index("--restart") + 1] == "no"
+    assert store.server("gen").autostart is True
+    # The managed container starts like any other.
+    assert wait_job(supervisor.enqueue("start", "gen")["job"]["id"])["state"] == "done"
+
+    j = wait_job(supervisor.enqueue("rollback", "gen")["job"]["id"])
+    assert j["state"] == "done", log_of(j["id"])
+    containers = podman_state(tmp_path)["containers"]
+    assert "asa-gen.compose-old" not in containers
+    assert containers["asa-gen"].get("labels", {}) == {}
+    assert store.server("gen").autostart is False
+
+
+def test_a_changed_setting_recreates_a_stopped_container(cluster_env, tmp_path):
+    from engine import store, supervisor
+
+    wait_job(supervisor.enqueue("adopt", "lc")["job"]["id"])
+    before = podman_state(tmp_path)["containers"]["asa-lc"]["labels"]["io.clustersascended.spec"]
+    c = store.cluster("main")
+    c.defaults["max_players"] = 32
+    store.save_cluster(c)
+    j = wait_job(supervisor.enqueue("start", "lc")["job"]["id"])
+    assert j["state"] == "done", log_of(j["id"])
+    after = podman_state(tmp_path)["containers"]["asa-lc"]
+    assert after["labels"]["io.clustersascended.spec"] != before
+    assert after["env"]["MAX_PLAYERS"] == "32"
+    assert "Settings changed: recreating" in log_of(j["id"])
+
+
+def test_a_crash_is_restarted_then_a_crash_loop_is_held(cluster_env, tmp_path):
+    import subprocess
+
+    from engine import store, supervisor
+
+    wait_job(supervisor.enqueue("adopt", "lc")["job"]["id"])
+    assert wait_job(supervisor.enqueue("start", "lc")["job"]["id"])["state"] == "done"
+    fake = str(FAKES / "podman")
+
+    def crash_and_wait_for_recovery():
+        before = len([j for j in store.jobs(50) if j["requested_by"] == "recovery"])
+        subprocess.run([fake, "crash", "asa-lc"], check=True)
+        end = time.time() + 10
+        while time.time() < end:
+            recovery = [j for j in store.jobs(50) if j["requested_by"] == "recovery"]
+            held = store.server("lc").held
+            if held or (len(recovery) > before and recovery[0]["state"] not in ("queued", "running")):
+                return recovery, held
+            time.sleep(0.05)
+        raise AssertionError("no recovery")
+
+    recovery, held = crash_and_wait_for_recovery()
+    assert recovery and recovery[0]["state"] == "done" and not held
+    recovery, held = crash_and_wait_for_recovery()
+    assert "Crash loop" in store.server("lc").held
+
+
+def test_autostart_brings_back_what_should_run(cluster_env):
+    from engine import boot, store
+
+    for sid in ("lc", "ast", "gen"):
+        s = store.server(sid)
+        s.autostart, s.desired = True, "running"
+        store.save_server(s)
+    results = boot.autostart()
+    assert [r["ok"] for r in results] == [True, True, False]   # the third is refused
+    assert "Not enough room" in results[2]["error"]
+    for r in results[:2]:
+        assert wait_job(r["job"]["id"])["state"] == "done"
+
+
+def test_update_backs_up_boots_with_update_server_and_restores(cluster_env, tmp_path, monkeypatch):
+    from engine import backups, steam, supervisor
+
+    made = []
+    monkeypatch.setattr(backups, "create", lambda s, c, kind, log, note="": made.append(kind) or {})
+    builds = iter(["100", "200"])    # installed before the update; after the pass
+    monkeypatch.setattr(steam, "latest_build", lambda force=False: ("200", ""))
+    monkeypatch.setattr(steam, "installed_build", lambda d: next(builds, "200"))
+    wait_job(supervisor.enqueue("adopt", "lc")["job"]["id"])
+    assert wait_job(supervisor.enqueue("start", "lc")["job"]["id"])["state"] == "done"
+
+    seen = []
+    real_create = None
+    from engine import podman
+    real_create = podman.create
+    monkeypatch.setattr(podman, "create", lambda argv: seen.append(argv) or real_create(argv))
+    j = wait_job(supervisor.enqueue("update", "lc")["job"]["id"], timeout=30)
+    assert j["state"] == "done", log_of(j["id"])
+    assert made == ["pre-update"]
+    envs = [json.loads((tmp_path / "podman" / "state.json").read_text())]  # final state
+    assert envs[0]["containers"]["asa-lc"]["env"]["UPDATE_SERVER"] == "FALSE"
+    assert len(seen) == 2       # an update-pass container, then the normal one again
+    assert "updated to build 200" in j["summary"]

@@ -60,6 +60,25 @@ def tick(list_containers: bool = True, now: float | None = None) -> None:
     clusters = {c.id: c for c in store.clusters()}
     for server in store.servers():
         _update(server, clusters.get(server.cluster), now)
+    _watchdog(now)
+
+
+def _watchdog(now: float) -> None:
+    from engine import supervisor, watchdog
+
+    snap = state.snapshot()
+    victim = watchdog.tick(snap.host, snap.settings, snap.servers.values(), now)
+    if not victim:
+        return
+    message = watchdog.status()["message"]
+    result = supervisor.enqueue("stop", victim, requested_by="watchdog",
+                                params={"reason": "watchdog"})
+    s = store.server(victim)
+    if s is not None:
+        s.held = f"Stopped by the memory watchdog: {message}"
+        store.save_server(s)
+    print(f"[clusters-ascended] watchdog stops {victim}: {message} ({result.get('error') or 'queued'})",
+          flush=True)
 
 
 def _update(server, cluster, now: float) -> None:
@@ -70,6 +89,7 @@ def _update(server, cluster, now: float) -> None:
     else:
         lv.container_state, lv.container_id = c["state"], c["id"]
         lv.exit_code = c.get("exit_code")
+        lv.extra["managed"] = (c.get("labels") or {}).get("io.clustersascended.managed") == "1"
         if c["started_at"] and c["started_at"] != lv.started_at:
             # A new start: forget the previous run's readiness.
             lv.started_at = c["started_at"]
@@ -155,10 +175,42 @@ def _record_run(server, lv, running: bool, now: float) -> None:
     elif lv.run_id is not None or store.open_run_for(server.id) is not None:
         run_id = lv.run_id or store.open_run_for(server.id)["id"]
         reason = state.pop_end_reason(server.id)
+        crashed = not reason and state.override(server.id) is None
         if not reason:
-            reason = "exited" if lv.exit_code in (0, None) else f"exited ({lv.exit_code})"
+            reason = "crashed" if lv.exit_code in (0, None) else f"crashed (exit {lv.exit_code})"
         if lv.peak:
             store.bump_peak(run_id, lv.peak)
         store.update_run(run_id, stopped_at=now, end_reason=reason)
         lv.run_id = None
         lv.extra.pop("peak_recorded", None)
+        if crashed:
+            _recover(server, now)
+
+
+CRASHLOOP_WINDOW_S = 1800
+CRASHLOOP_RUNS = 2
+
+
+def _recover(server, now: float) -> None:
+    """
+    A map that exited without the app asking. If the admin wants it running
+    and it is the app's container, start it again through the queue (so
+    through admission). Two crashes or failed starts in 30 minutes hold it.
+    """
+    from engine import supervisor
+
+    s = store.server(server.id)
+    settings = store.host_settings()
+    lv = state.live(server.id)
+    if (s is None or s.held or s.desired != "running" or not s.autostart
+            or not settings.crash_restart or not lv.extra.get("managed")):
+        return
+    bad = [r for r in store.recent_runs(s.id, now - CRASHLOOP_WINDOW_S)
+           if (r.get("end_reason") or "").startswith(("crashed", "failed start"))]
+    if len(bad) >= CRASHLOOP_RUNS:
+        s.held = f"Crash loop: {len(bad)} crashes or failed starts in 30 minutes. Start it to try again."
+        store.save_server(s)
+        print(f"[clusters-ascended] {s.id}: {s.held}", flush=True)
+        return
+    result = supervisor.enqueue("start", s.id, requested_by="recovery")
+    print(f"[clusters-ascended] {s.id} crashed; restart {result.get('error') or 'queued'}", flush=True)
