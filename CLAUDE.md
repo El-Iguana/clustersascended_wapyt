@@ -1,9 +1,27 @@
 # Clusters Ascended — notes for working on this repo
 
-ARK: Survival Ascended cluster manager on pytincture + wapyt. Replaces the
-FastAPI webadmin in `~/asa-cluster/webadmin` (the game data stays in
-`~/asa-cluster`). Started 2026-11-11. Port **8098** (the old webadmin keeps
-8099 until cutover). Full plan: `~/.claude/plans/tender-meandering-panda.md`.
+ARK: Survival Ascended cluster manager on pytincture + wapyt. Replaced the
+FastAPI webadmin in `~/asa-cluster/webadmin` on 2026-11-11 (the game data stays
+in `~/asa-cluster`). Full plan: `~/.claude/plans/tender-meandering-panda.md`.
+
+## Running it (since the cutover, 2026-11-11)
+
+- `clusters-ascended.service` (systemd --user, `deploy/`): the app on
+  127.0.0.1:8098, in HTTPS mode (`.env`: `CA_CANONICAL_ORIGIN=https://192.168.1.97:8099`,
+  `CA_ALLOWED_HOSTS=192.168.1.97,127.0.0.1`). `KillMode=process` so restarting it
+  never kills a map.
+- `clusters-ascended-caddy.service`: Caddy (`~/.local/bin/caddy`, `deploy/Caddyfile`)
+  serves **https://192.168.1.97:8099** with its internal CA and forwards to 8098.
+  Browsers warn until `~/.local/share/caddy/pki/authorities/local/root.crt` is trusted
+  (pytincture's service worker also needs that). Sign in as admin / `CA_ADMIN_PASSWORD`.
+- All three maps are **adopted**: the app's containers (`--restart no`, labels
+  `io.clustersascended.*`). The compose containers are kept as `asa-*.compose-old`;
+  rollback is per map on its page. `asa-webadmin.service` is disabled, not deleted.
+- **Never run `podman-compose up` in ~/asa-cluster any more**: it would recreate the
+  containers behind the app's back.
+- Dev copy: `systemctl --user stop clusters-ascended` first (same port and database),
+  then `scripts/dev.sh start`, which needs a loopback `.env` (comment out the two CA_
+  origin lines). Restart the service afterwards.
 
 ## Design rules
 
@@ -77,12 +95,10 @@ three timeouts mark podman degraded).
 1. ✅ Foundation: import, dashboard with memory bar and admission previews, queued
    start/stop/restart/make-room with the sequential gate on the existing compose
    containers, jobs with logs, host rules.
-2. Ownership + safety: app-created containers (spec builder, `--restart=no`, adopt/rollback),
+2. ✅ Ownership + safety: app-created containers (spec builder, `--restart=no`, adopt/rollback),
    cluster and map editing, mods editor, watchdog, boot autostart, crashloop guard,
-   sequential updates with pre-update backups. Cutover from the webadmin.
+   sequential updates with pre-update backups, world backups. Cutover done 2026-11-11.
 3. Live ops: console (log tail + RCON), players, ini settings, add-map wizard.
 4. World backups and restore; files.
 5. Schedules (restarts with warnings, backups, update checks), memory history charts.
 
-Until phase 2 the compose containers keep `restart: unless-stopped`, so a crash
-restart bypasses admission, and the old webadmin can still start maps on its own.

@@ -1,0 +1,21 @@
+# systemd --user unit: Caddy serving Clusters Ascended over HTTPS on the LAN.
+#
+#   cp deploy/clusters-ascended-caddy.service ~/.config/systemd/user/
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now clusters-ascended-caddy
+
+[Unit]
+Description=Clusters Ascended HTTPS (Caddy)
+After=default.target clusters-ascended.service
+
+[Service]
+Type=simple
+Environment=CA_LAN_HOST=192.168.1.97
+Environment=CA_LAN_PORT=8099
+ExecStart=%h/.local/bin/caddy run --config %h/development/clustersascended_wapyt/deploy/Caddyfile --adapter caddyfile
+ExecReload=%h/.local/bin/caddy reload --config %h/development/clustersascended_wapyt/deploy/Caddyfile --adapter caddyfile --address localhost:2099
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
