@@ -257,6 +257,7 @@ def _start_once(server_id: str, log, check: str, timeout_s, update_pass: bool, j
         peak = _wait_ready(server, settings, t0, flag, log, timeout_s or settings.ready_timeout_s, job_id, attempt)
         set_stage(job_id, "verifying", "Waiting for RCON to answer", attempt)
         _wait_rcon(server, eff, settings, flag, log)
+        _apply_bans(server, log)
         peak = max(peak, _settle(server, settings, flag, log, job_id, attempt))
         set_stage(job_id, "measuring", "Measuring its running memory", attempt)
         _wait_seen_ready(server, flag)
@@ -358,6 +359,17 @@ def _wait_rcon(server, eff, settings, flag, log) -> None:
             if time.time() > deadline:
                 raise RuntimeError(f"RCON did not answer within {settings.rcon_timeout_s} s: {exc}")
         time.sleep(POLL_S)
+
+
+def _apply_bans(server, log) -> None:
+    """The cluster's bans reach a map that was stopped when they were made."""
+    from engine import players
+
+    pending = [b for b in players.bans(server.cluster) if server.id not in b["applied"]]
+    if not pending:
+        return
+    result = players.apply_bans(server.cluster, only_server=server.id)
+    log(f"Applied {len(pending)} cluster ban(s)." if result["done"] else "Could not apply the cluster's bans yet.")
 
 
 def _settle(server, settings, flag, log, job_id=None, attempt: int = 1) -> int:

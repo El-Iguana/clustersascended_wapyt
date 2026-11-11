@@ -1,6 +1,11 @@
 """
-A map's page (``#/map/<id>``): status and actions (including adopt, update
-and backup), its own settings over the cluster's, mods, backups and runs.
+A map's page, in tabs:
+
+* ``#/map/<id>``           Overview: status, actions (start, stop, adopt, update, back up), runs
+* ``#/map/<id>/players``   Players: online, kick, ban, messages, history
+* ``#/map/<id>/console``   Console: the game log and admin commands
+* ``#/map/<id>/settings``  Settings: the map's own settings, game settings and mods
+* ``#/map/<id>/backups``   Backups
 """
 from __future__ import annotations
 
@@ -11,10 +16,16 @@ from wapyt import message
 from services.fmt import duration, gib, phase_label
 from services.server_api import ServerApi
 from ui.common import Listeners, attr, closest, esc, failed, spawn, toast
+from ui.console_tab import ConsoleTab
+from ui.players_tab import PlayersTab
 from ui.map_game import MapGame, html as map_game_html
 from ui.mods import handle as mods_handle, html as mods_html, read as mods_read
 
 GiB = 1024 ** 3
+
+TABS = (("", "Overview", "mdi-view-dashboard-outline"), ("players", "Players", "mdi-account-multiple"),
+        ("console", "Console", "mdi-console"), ("settings", "Settings", "mdi-tune"),
+        ("backups", "Backups", "mdi-backup-restore"))
 
 
 def _clock(ts) -> str:
@@ -27,23 +38,54 @@ def _val(name: str) -> str:
 
 
 class ServerView:
-    def __init__(self, container, server_id: str) -> None:
+    def __init__(self, container, server_id: str, tab: str = "") -> None:
         self.el = container
         self.server_id = server_id
+        self.tab = tab if tab in {t[0] for t in TABS} else ""
         self.listeners = Listeners()
         self.data: dict = {}
         self.game = MapGame(server_id)
+        self.child = None
 
     def mount(self) -> None:
-        self.el.innerHTML = '<div class="ca-page" id="ca-map"><div class="ca-empty">Loading…</div></div>'
-        self.listeners.on(self.el, "click", self._on_click)
-        self.listeners.on(self.el, "change", self._on_change)
-        self.listeners.on(self.el, "input", self._on_input)
+        tabs = "".join(
+            f'<a class="ca-tab{" ca-tab-on" if t == self.tab else ""}" href="#/map/{esc(self.server_id)}'
+            f'{("/" + t) if t else ""}"><span class="mdi {icon}"></span> {esc(title)}</a>' for t, title, icon in TABS)
+        self.el.innerHTML = (
+            '<div class="ca-page" id="ca-map"><div class="ca-page-head"><a class="ca-back" href="#/">←</a>'
+            '<h1 id="ca-map-name">…</h1><span class="ca-sub" id="ca-map-in"></span>'
+            '<span class="ca-badge" id="ca-map-badge" data-kind="off"></span></div>'
+            f'<nav class="ca-tabs">{tabs}</nav><div id="ca-map-body" class="ca-map-body">'
+            '<div class="ca-empty">Loading…</div></div></div>')
+        body = js.document.getElementById("ca-map-body")
+        if self.tab in ("players", "console"):
+            self.child = (PlayersTab if self.tab == "players" else ConsoleTab)(body, self.server_id)
+            self.child.mount()
+        else:
+            self.listeners.on(self.el, "click", self._on_click)
+            self.listeners.on(self.el, "change", self._on_change)
+            self.listeners.on(self.el, "input", self._on_input)
         self.listeners.every(5000, lambda: spawn(self.refresh_status(), "map status"))
         spawn(self.load(), "map load")
 
     def unmount(self) -> None:
+        if self.child is not None:
+            self.child.unmount()
         self.listeners.clear()
+
+    def _head(self, d: dict) -> None:
+        s = d["server"]
+        name = js.document.getElementById("ca-map-name")
+        where = js.document.getElementById("ca-map-in")
+        badge = js.document.getElementById("ca-map-badge")
+        if name:
+            name.textContent = s["name"]
+        if where:
+            where.innerHTML = f'in <a href="#/cluster/{esc(d["cluster"]["id"])}">{esc(d["cluster"]["name"])}</a>'
+        if badge:
+            label, kind = phase_label(d["phase"])
+            badge.textContent = label
+            badge.setAttribute("data-kind", kind)
 
     async def load(self) -> None:
         result = await ServerApi().detail_async(self.server_id)
@@ -51,15 +93,19 @@ class ServerView:
             return
         self.data = result
         self.game.set_cluster(result["game"]["cluster"])
-        root = js.document.getElementById("ca-map")
-        if root:
-            root.innerHTML = self._render(result)
+        self._head(result)
+        if self.tab in ("players", "console"):
+            return
+        body = js.document.getElementById("ca-map-body")
+        if body:
+            body.innerHTML = self._render(result)
 
     async def refresh_status(self) -> None:
         result = await ServerApi().detail_async(self.server_id)
         if not result.get("ok"):
             return
         self.data = result
+        self._head(result)
         box = js.document.getElementById("ca-map-status")
         if box:
             box.innerHTML = self._status(result)
@@ -68,13 +114,12 @@ class ServerView:
 
     def _render(self, d: dict) -> str:
         s = d["server"]
-        return f"""
-<div class="ca-page-head"><a class="ca-back" href="#/">←</a><h1>{esc(s["name"])}</h1>
-  <span class="ca-sub">in <a href="#/cluster/{esc(d["cluster"]["id"])}">{esc(d["cluster"]["name"])}</a></span></div>
-<section class="ca-card" id="ca-map-status">{self._status(d)}</section>
-{map_game_html(d["game"], s["name"])}
-<div class="ca-two">{self._settings(d)}{self._mods(d)}</div>
-{self._backups(d)}
+        if self.tab == "settings":
+            return f"""{map_game_html(d["game"], s["name"])}
+<div class="ca-two">{self._settings(d)}{self._mods(d)}</div>"""
+        if self.tab == "backups":
+            return self._backups(d)
+        return f"""<section class="ca-card" id="ca-map-status">{self._status(d)}</section>
 {self._runs(d)}"""
 
     def _status(self, d: dict) -> str:

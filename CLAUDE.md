@@ -102,6 +102,20 @@ in `~/asa-cluster`). Full plan: `~/.claude/plans/tender-meandering-panda.md`.
   (default off, 05:00, chat countdown 15/5/1 → `warned_restart` jobs through the start queue).
   A restart missed by over an hour is skipped; a missed backup runs late.
 
+## Players and console (2026-11-11)
+
+- `engine/players.py`: the poller's 30 s `ListPlayers` feeds `player_sessions` (join/leave;
+  a silent RCON is "no change", a stopped map closes all). The old webadmin's
+  `<root>/webadmin/var/logins.jsonl` is imported once at boot (source `webadmin`).
+- Bans belong to the cluster (`bans` table): `BanPlayer` to every running map now, and to a
+  stopped map right after RCON answers on its next start (`lifecycle._apply_bans`); `applied`
+  lists the maps that got it. Unban sends `UnbanPlayer` to running maps only (a stopped map
+  keeps ASA's own ban until it is unbanned while running).
+- Messages: `ServerChat` (chat) or `Broadcast` (big on-screen), to a map or the whole cluster.
+- `engine/console.py`: the page polls ShooterGame.log by (inode, offset) every 2 s; a new inode
+  (ASA starts a new log each boot) starts over. Commands go over RCON; replies show in blue.
+- Map page tabs: Overview · Players · Console · Settings · Backups (`#/map/<id>/<tab>`).
+
 ## Layout
 
 ```
@@ -155,8 +169,8 @@ three timeouts mark podman degraded).
 2. ✅ Ownership + safety: app-created containers (spec builder, `--restart=no`, adopt/rollback),
    cluster and map editing, mods editor, watchdog, boot autostart, crashloop guard,
    sequential updates with pre-update backups, world backups. Cutover done 2026-11-11.
-3. Live ops: ✅ game settings (sliders, presets, per-map overrides) and named mods; still to do:
-   console (log tail + RCON), players, add-map wizard.
+3. Live ops: ✅ game settings, named mods, players (kick, cluster bans, messages, history) and
+   console; still to do: add-map wizard.
 4. ✅ World backups, restore, nightly backups and daily restarts (2026-11-11); files still to do.
 5. Schedules (restarts with warnings, backups, update checks), memory history charts.
 

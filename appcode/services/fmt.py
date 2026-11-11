@@ -47,7 +47,9 @@ def duration(seconds) -> str:
         return f"{s}s"
     if s < 3600:
         return f"{s // 60}m {s % 60:02d}s"
-    return f"{s // 3600}h {s % 3600 // 60:02d}m"
+    if s < 2 * 86400:
+        return f"{s // 3600}h {s % 3600 // 60:02d}m"
+    return f"{s // 86400}d {s % 86400 // 3600}h"
 
 
 def clock(ts) -> str:

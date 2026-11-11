@@ -185,6 +185,8 @@ def _poll_players(server, cluster, lv, now: float) -> None:
         lv.players = rcon.parse_players(reply)
     except rcon.RconError:
         lv.players = None
+    from engine import players
+    players.record_roster(server.id, lv.players, now)
 
 
 def _record_run(server, lv, running: bool, now: float) -> None:
@@ -218,6 +220,9 @@ def _record_run(server, lv, running: bool, now: float) -> None:
         if lv.peak:
             store.bump_peak(run_id, lv.peak)
         store.update_run(run_id, stopped_at=now, end_reason=reason)
+        from engine import players
+        players.close_all(server.id, now)
+        lv.players = None
         lv.run_id = None
         lv.extra.pop("peak_recorded", None)
         if crashed:

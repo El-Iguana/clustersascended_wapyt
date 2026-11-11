@@ -123,7 +123,7 @@ class ClustersAscended(MainWindow):
         elif page == "import":
             self._view = ImportView(container)
         elif page == "map" and len(parts) > 1:
-            self._view = ServerView(container, parts[1])
+            self._view = ServerView(container, parts[1], parts[2] if len(parts) > 2 else "")
         elif page == "cluster" and len(parts) > 1:
             self._view = ClusterView(container, parts[1], parts[2] if len(parts) > 2 else "")
         else:
@@ -304,6 +304,26 @@ _CSS = """
 .ca-star.ca-on{color:#fbbf24;}
 .ca-row-btns{display:flex;gap:6px;justify-content:flex-end;}
 .ca-row-btns .ca-btn{padding:3px 10px;}
+.ca-map-body{display:flex;flex-direction:column;gap:16px;}
+.ca-page-head #ca-map-badge:empty{display:none;}
+.ca-msg-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;}
+.ca-msg-row input:not([type]){flex:1;min-width:240px;background:#0b1222;color:#e5e7eb;border:1px solid #334155;
+  border-radius:6px;padding:8px 10px;font:inherit;}
+.ca-msg-row label{display:inline-flex;gap:6px;align-items:center;}
+.ca-gap{flex:1;}
+.ca-console{display:flex;flex-direction:column;gap:10px;}
+.ca-con-log{height:calc(100vh - 360px);min-height:280px;max-height:none;white-space:pre-wrap;word-break:break-word;}
+.ca-con-log div{min-height:1.2em;}
+.ca-con-line{color:#cbd5e1;}
+.ca-con-warn{color:#fbbf24;}
+.ca-con-errline,.ca-con-err{color:#f87171;}
+.ca-con-good{color:#86efac;}
+.ca-con-cmd{color:#e5e7eb;font-weight:700;margin-top:4px;}
+.ca-con-reply{color:#93c5fd;}
+.ca-con-note{color:#94a3b8;font-style:italic;}
+.ca-con-input{display:flex;gap:8px;align-items:center;background:#05080f;border:1px solid #334155;border-radius:8px;padding:4px 6px 4px 12px;}
+.ca-con-prompt{color:#38bdf8;font:600 14px ui-monospace,Menlo,Consolas,monospace;}
+.ca-con-input input{flex:1;background:transparent;border:0;color:#e5e7eb;font:13px ui-monospace,Menlo,Consolas,monospace;padding:6px 0;outline:none;}
 @media (max-width:700px){.ca-field{grid-template-columns:1fr;}.ca-help{grid-column:1;}.ca-page{padding:12px;}}
 """
 

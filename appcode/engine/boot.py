@@ -18,6 +18,7 @@ def start_engine() -> None:
         supervisor.recover()
         from engine import scheduler
         scheduler.ensure_defaults()
+        _import_old_player_log()
         try:
             poller.tick()   # a first reading before any request arrives
         except Exception as exc:  # noqa: BLE001
@@ -48,3 +49,21 @@ def autostart() -> list[dict]:
 
 def started() -> bool:
     return _started
+
+
+def _import_old_player_log() -> None:
+    """Once: the old webadmin's join/leave log (<cluster root>/webadmin/var/logins.jsonl)."""
+    from pathlib import Path
+
+    from engine import players
+
+    for c in store.clusters():
+        path = Path(c.root_dir) / "webadmin" / "var" / "logins.jsonl"
+        mapping = {s.container_name: s.id for s in store.servers(c.id)}
+        try:
+            n = players.import_webadmin_log(str(path), mapping)
+        except Exception as exc:  # noqa: BLE001 - history is a nice-to-have
+            print(f"[clusters-ascended] old player log: {exc!r}", flush=True)
+            continue
+        if n:
+            print(f"[clusters-ascended] imported {n} player sessions from {path}", flush=True)

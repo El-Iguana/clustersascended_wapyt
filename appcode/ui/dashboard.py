@@ -206,8 +206,8 @@ class DashboardView:
                 who = '<span class="ca-sub">players: –</span>'
             else:
                 names = ", ".join(esc(p["name"]) for p in players[:6])
-                who = (f'<span class="ca-players"><span class="mdi mdi-account-multiple"></span> '
-                       f'{len(players)}{": " + names if names else ""}</span>')
+                who = (f'<a class="ca-players ca-plain" href="#/map/{esc(s["id"])}/players"><span class="mdi mdi-account-multiple"></span> '
+                       f'{len(players)}{": " + names if names else ""}</a>')
         uptime = ""
         if s.get("ready_at"):
             uptime = f" · up {duration(js.Date.now() / 1000 - s['ready_at'])}"

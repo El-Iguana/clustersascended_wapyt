@@ -76,6 +76,18 @@ MIGRATIONS = [
         enabled INTEGER NOT NULL DEFAULT 1, last_run REAL, next_run REAL, last_result TEXT NOT NULL DEFAULT '',
         UNIQUE(cluster, kind));
     """,
+    # 6: players: who was on which map when, and the cluster's bans
+    """
+    CREATE TABLE player_sessions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, server TEXT NOT NULL, eos_id TEXT NOT NULL, name TEXT NOT NULL,
+        joined_at REAL NOT NULL, left_at REAL, source TEXT NOT NULL DEFAULT 'app');
+    CREATE INDEX player_sessions_server ON player_sessions(server, joined_at DESC);
+    CREATE INDEX player_sessions_player ON player_sessions(eos_id, joined_at DESC);
+    CREATE TABLE bans (
+        cluster TEXT NOT NULL, eos_id TEXT NOT NULL, name TEXT NOT NULL DEFAULT '', reason TEXT NOT NULL DEFAULT '',
+        banned_at REAL NOT NULL, banned_by TEXT NOT NULL DEFAULT '', applied TEXT NOT NULL DEFAULT '[]',
+        PRIMARY KEY(cluster, eos_id));
+    """,
 ]
 
 
