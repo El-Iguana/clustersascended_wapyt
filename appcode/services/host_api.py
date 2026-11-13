@@ -95,7 +95,7 @@ class HostApi:
         current = store.host_settings().to_dict()
         gib_fields = ("swap_allowance", "reserve", "default_need", "warn_free", "crit_free")
         int_fields = ("max_running", "settle_s", "ready_timeout_s", "rcon_timeout_s",
-                      "stop_timeout_s", "save_timeout_s", "update_timeout_s", "crit_sustain_s",
+                      "stop_timeout_s", "exit_wait_s", "save_timeout_s", "update_timeout_s", "crit_sustain_s",
                       "watchdog_cooldown_s", "memory_recheck_s", "memory_wait_s", "start_attempts",
                       "retry_delay_s")
         float_fields = ("need_margin", "psi_crit", "startup_factor")

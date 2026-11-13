@@ -18,7 +18,7 @@ class JobsApi:
         names = {s.id: s.name for s in store.servers()}
         jobs = store.jobs(limit=max(1, min(int(limit), 500)))
         for j in jobs:
-            j["server_name"] = names.get(j["server"], j["server"] or "")
+            j["server_name"] = names.get(j["server"]) or j["params"].get("name") or j["server"] or ""
         return {"ok": True, "jobs": jobs}
 
     def log(self, job_id: int) -> dict:

@@ -30,6 +30,7 @@ LANES = ("lifecycle", "stop", "io")
 KIND_LANE = {"start": "lifecycle", "restart": "lifecycle", "make_room_start": "lifecycle",
              "adopt": "lifecycle", "rollback": "lifecycle", "update": "lifecycle",
              "restore": "lifecycle", "warned_restart": "lifecycle", "add_map": "lifecycle",
+             "update_cluster": "lifecycle",
              "stop": "stop", "backup": "io"}
 ACTIVE = ("queued", "running")
 
@@ -152,7 +153,31 @@ def enqueue(kind: str, server_id: str, requested_by: str = "admin", params: dict
             "decision": decision.to_dict() if decision else None}
 
 
-CANCELLABLE = frozenset({"start", "restart", "make_room_start", "update", "warned_restart", "add_map"})
+CANCELLABLE = frozenset({"start", "restart", "make_room_start", "update", "warned_restart", "add_map",
+                         "update_cluster"})
+
+
+def enqueue_update_cluster(cluster_id: str, requested_by: str = "admin") -> dict:
+    """Stop every running map of the cluster, then update each one that is behind (one job)."""
+    cluster = store.cluster(cluster_id)
+    if cluster is None:
+        return {"ok": False, "error": "Unknown cluster."}
+    ids = [s.id for s in store.servers(cluster_id)]
+    with _enqueue_lock:
+        for j in store.jobs(limit=200, states=ACTIVE):
+            if j["kind"] == "update_cluster" and j["params"].get("cluster") == cluster_id:
+                return {"ok": False, "error": f"{cluster.name} is already being updated."}
+            if j["server"] in ids and j["lane"] != "io":
+                name = store.server(j["server"]).name
+                return {"ok": False, "error": f"{name} has a {j['kind']} job {j['state']}; "
+                                              "wait for it or cancel it first."}
+        params = {"cluster": cluster_id, "servers": ids, "name": f"{cluster.name} (update all)"}
+        job_id = store.add_job("lifecycle", "update_cluster", None, params, requested_by)
+        store.set_job(job_id, stage="queued")
+        store.audit(requested_by, "update cluster", cluster_id, {})
+    _wake["lifecycle"].set()
+    position = next((i for i, j in enumerate(queue(), start=1) if j["id"] == job_id), None)
+    return {"ok": True, "job": store.job(job_id), "position": position}
 
 
 def enqueue_add_map(cluster_id: str, values: dict, requested_by: str = "admin") -> dict:
@@ -190,7 +215,8 @@ def cancel(job_id: int) -> dict:
             return {"ok": False, "error": f"A running {j['kind']} cannot be cancelled."}
         with _aborts_lock:
             _cancels.add(job_id)
-        abort_flag(j["server"]).set()
+        for sid in [j["server"]] if j["server"] else j["params"].get("servers", []):
+            abort_flag(sid).set()
         store.set_job(job_id, detail="Cancelling…")
     return {"ok": True, "was": "running"}
 
@@ -250,7 +276,7 @@ def run_job(j: dict) -> dict:
 
     log = JobLog(j["id"])
     store.set_job(j["id"], state="running", started=time.time())
-    if j["kind"] != "stop":
+    if j["kind"] != "stop" and j["server"]:
         abort_flag(j["server"]).clear()
     final, summary = "done", ""
     set_stage(j["id"], "running")

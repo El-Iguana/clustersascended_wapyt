@@ -44,6 +44,18 @@ in `~/asa-cluster`). Full plan: `~/.claude/plans/tender-meandering-panda.md`.
   exists to prevent that.
 - Stops run on their own `stop` lane and abort a start still loading the
   same map (`supervisor.abort_flag`).
+- **How a stop works (2026-11-13):** POK's SIGTERM handler can't verify `-usestore` saves
+  ("No unambiguous main .ark file") and then holds PID 1 for the whole grace period (Lost
+  Colony sat 300 s, then SIGKILL). So `lifecycle.stop` does its own: RCON SaveWorld → wait
+  for the file → touch `/home/pok/shutdown.flag` (otherwise POK's monitor restarts a game
+  that exits) → RCON `DoExit` → wait up to `exit_wait_s` (90) for `pgrep ArkAscendedServer.exe`
+  to come back empty → `podman stop -t 10`. The long `stop_timeout_s` grace is used only when
+  the save could not be confirmed.
+- **Update all** (`update_cluster` job, lifecycle lane, `server` NULL, params carry the
+  cluster and its map ids): if any map is behind, save and stop every running map in parallel,
+  set them `desired=stopped`, then `update()` each map that is behind, one at a time. Nothing
+  is started again afterwards. Clears each map's stale abort flag before its boot. Update
+  boots skip the settle wait.
 - **Two needs per map** (`memlearn.needs`): running need = margin × the highest recent
   *running* sample (settled after the start, peak after settle, or the log's ready reading;
   `default_need` until measured); startup need = max(startup_factor × running need,

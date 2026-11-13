@@ -372,3 +372,67 @@ def test_cancelling_queued_starts(cluster_env):
     assert wait_job(first["id"])["state"] == "cancelled"
     from engine import store
     assert store.job(second["id"])["state"] == "cancelled"
+
+
+# -- stopping: a confirmed save, then DoExit, then forced ---------------------------
+
+def test_a_saved_stop_asks_asa_to_quit_and_forces_quickly(cluster_env):
+    from engine import supervisor
+
+    assert wait_job(supervisor.enqueue("start", "lc")["job"]["id"])["state"] == "done"
+    j = wait_job(supervisor.enqueue("stop", "lc")["job"]["id"])
+    assert j["state"] == "done", log_of(j["id"])
+    assert cluster_env["rcons"]["lc"].commands[-2:] == ["SaveWorld", "DoExit"]
+    calls = cluster_env["calls"]()
+    assert ["exec", "asa-lc", "touch", "/home/pok/shutdown.flag"] in calls
+    assert ["stop", "-t", "10", "asa-lc"] in calls
+    assert "has quit" in log_of(j["id"])
+
+
+def test_an_unsaved_stop_keeps_the_long_grace(cluster_env):
+    from engine import supervisor
+
+    assert wait_job(supervisor.enqueue("start", "lc")["job"]["id"])["state"] == "done"
+    cluster_env["rcons"]["lc"].password = "changed"     # RCON refuses: the save is not confirmed
+    j = wait_job(supervisor.enqueue("stop", "lc")["job"]["id"], timeout=30)
+    assert j["state"] == "done", log_of(j["id"])
+    assert ["stop", "-t", "5", "asa-lc"] in cluster_env["calls"](), log_of(j["id"])
+    assert "DoExit" not in cluster_env["rcons"]["lc"].commands
+
+
+def test_update_cluster_stops_everything_then_updates_each_and_restarts_nothing(cluster_env, monkeypatch):
+    from engine import backups, state, steam, store, supervisor
+
+    monkeypatch.setattr(backups, "create", lambda s, c, kind, log, note="", keep=None: {})
+    monkeypatch.setattr(steam, "latest_build", lambda force=False: ("200", ""))
+    updated: set[str] = set()
+    monkeypatch.setattr(steam, "installed_build",
+                        lambda d: "200" if (d.rsplit("/", 1)[-1] in updated or d.endswith("gen")) else "100")
+    for sid in ("lc", "ast"):
+        wait_job(supervisor.enqueue("adopt", sid)["job"]["id"])
+        assert wait_job(supervisor.enqueue("start", sid)["job"]["id"])["state"] == "done"
+
+    from engine import lifecycle
+    real_start = lifecycle.start
+
+    def start_marking(server_id, log, **kw):     # SteamCMD runs during the update-pass boot
+        if kw.get("update_pass"):
+            updated.add(server_id)
+        return real_start(server_id, log, **kw)
+    monkeypatch.setattr(lifecycle, "start", start_marking)
+
+    r = supervisor.enqueue_update_cluster("main")
+    assert r["ok"], r
+    assert not supervisor.enqueue_update_cluster("main")["ok"]     # one at a time
+    j = wait_job(r["job"]["id"], timeout=60)
+    assert j["state"] == "done", log_of(j["id"])
+    log = log_of(j["id"])
+    assert "behind: LC, AST." in log
+    assert "Maps left stopped." in j["summary"]
+    ops = [(c[0], c[-1]) for c in cluster_env["calls"]() if c[0] in ("start", "stop")]
+    # After the two normal starts: both stopped first, then each update pass start→stop, no restarts.
+    tail = ops[2:]
+    assert set(tail[:2]) == {("stop", "asa-lc"), ("stop", "asa-ast")}
+    assert tail[2:] == [("start", "asa-lc"), ("stop", "asa-lc"), ("start", "asa-ast"), ("stop", "asa-ast")]
+    assert store.server("lc").desired == "stopped" and store.server("ast").desired == "stopped"
+    state.request_refresh()

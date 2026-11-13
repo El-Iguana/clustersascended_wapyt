@@ -98,6 +98,11 @@ def rename(old: str, new: str) -> None:
     run(["rename", old, new], timeout=60)
 
 
+def exec_(name: str, argv: list[str], timeout: float = 30) -> int:
+    """Run a command inside a running container; returns its exit code."""
+    return run(["exec", name, *argv], timeout=timeout, check=False).returncode
+
+
 def stop(name: str, grace: int) -> str:
     """Stop with a long grace; returns stderr (podman says when it had to SIGKILL)."""
     cp = run(["stop", "-t", str(grace), name], timeout=grace + 120)

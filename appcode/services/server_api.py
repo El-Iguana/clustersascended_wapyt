@@ -43,6 +43,13 @@ class ServerApi:
         return {"ok": bool(queued) or not refused, "queued": queued, "refused": refused,
                 "error": "; ".join(refused)}
 
+    def update_cluster(self, cluster_id: str) -> dict:
+        """Save and stop every running map, then update each map that is behind. None restart."""
+        from engine import supervisor
+        from services.auth import actor
+
+        return supervisor.enqueue_update_cluster(str(cluster_id), requested_by=actor(self._user))
+
     def cancel_queue(self) -> dict:
         from engine import supervisor
 
