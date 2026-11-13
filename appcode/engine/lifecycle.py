@@ -29,6 +29,7 @@ from engine.models import effective
 from engine.supervisor import abort_flag, cancel_requested, set_stage
 
 POLL_S = 5
+FORCE_GRACE_S = 10        # SIGTERM → SIGKILL once the world is saved
 OLD_SUFFIX = ".compose-old"
 
 
@@ -69,6 +70,8 @@ def run(job: dict, log) -> str:
     if kind == "update":
         return update(server_id, log, force=bool(params.get("force")), make_room=bool(params.get("make_room")),
                       job=job)
+    if kind == "update_cluster":
+        return update_cluster(params["cluster"], log, job)
     if kind == "backup":
         server, cluster, _eff, _settings = _context(server_id)
         if params.get("skip_unchanged") and backups.unchanged_since_last(server):
@@ -260,7 +263,8 @@ def _start_once(server_id: str, log, check: str, timeout_s, update_pass: bool, j
         set_stage(job_id, "verifying", "Waiting for RCON to answer", attempt)
         _wait_rcon(server, eff, settings, flag, log)
         _apply_bans(server, log)
-        peak = max(peak, _settle(server, settings, flag, log, job_id, attempt))
+        if not update_pass:      # it is stopped right after; nothing waits on it
+            peak = max(peak, _settle(server, settings, flag, log, job_id, attempt))
         set_stage(job_id, "measuring", "Measuring its running memory", attempt)
         _wait_seen_ready(server, flag)
         settled = _measure(server)
@@ -420,17 +424,24 @@ def stop(server_id: str, log, reason: str = "stop", save: bool = True) -> str:
     state.set_override(server_id, "stopping")
     state.set_end_reason(server_id, reason)
     try:
-        if save:
-            try:
-                reply = rcon.command(server.rcon_port, eff.get("admin_password") or "", "SaveWorld",
-                                     timeout=settings.save_timeout_s)
-                log(f"SaveWorld: {reply.strip() or 'ok'}")
-            except rcon.RconError as exc:
-                log(f"SaveWorld failed ({exc}); stopping anyway.")
-        log(f"Stopping {server.name} (up to {settings.stop_timeout_s} s for ASA to exit).")
-        stderr = podman.stop(server.container_name, settings.stop_timeout_s)
+        saved = _save_for_stop(server, eff, settings, log) if save else False
+        if saved or not save:
+            # Nothing left to lose: let ASA quit by itself for a bit, then force it.
+            # POK's own SIGTERM handler cannot verify -usestore saves and would
+            # otherwise hold the container for the whole grace period.
+            if saved:
+                _quit_game(server, eff, settings, log)
+            grace = FORCE_GRACE_S
+            log(f"Stopping {server.name}.")
+        else:
+            grace = settings.stop_timeout_s
+            log(f"Stopping {server.name} (the save was not confirmed: up to {grace} s for ASA to exit).")
+        stderr = podman.stop(server.container_name, grace)
         if "SIGKILL" in stderr:
-            log(f"Warning: {server.name} did not exit in {settings.stop_timeout_s} s and was killed.")
+            if saved:
+                log(f"{server.name} was forced down (its world had already been saved).")
+            elif save:
+                log(f"Warning: {server.name} did not exit in {grace} s and was killed.")
     finally:
         state.request_refresh()
         # Hold "stopping" until the poller has seen the container stop.
@@ -440,6 +451,51 @@ def stop(server_id: str, log, reason: str = "stop", save: bool = True) -> str:
             time.sleep(POLL_S / 2)
         state.set_override(server_id, None)
     return f"{server.name} stopped."
+
+
+def _save_for_stop(server, eff, settings, log) -> bool:
+    """SaveWorld, then wait for it to land on disk. True when ASA confirmed the save."""
+    asked = time.time()
+    try:
+        reply = rcon.command(server.rcon_port, eff.get("admin_password") or "", "SaveWorld",
+                             timeout=settings.save_timeout_s)
+    except rcon.RconError as exc:
+        log(f"SaveWorld failed ({exc}).")
+        return False
+    log(f"SaveWorld: {reply.strip() or 'ok'}")
+    # ASA answers about a second before the file is written.
+    end = time.time() + backups.SAVE_LAND_S
+    while time.time() < end:
+        if backups.newest_change(server) >= asked - 1:
+            return True
+        time.sleep(0.5)
+    log("The new save did not show up on disk within a minute; ASA said it saved, so carrying on.")
+    return True
+
+
+def _quit_game(server, eff, settings, log) -> None:
+    """
+    Ask ASA to quit (DoExit) and wait up to ``exit_wait_s`` for its process to go.
+    POK restarts a game that exits unless /home/pok/shutdown.flag exists, so set it first.
+    """
+    name = server.container_name
+    try:
+        podman.exec_(name, ["touch", "/home/pok/shutdown.flag"], timeout=20)
+        rcon.command(server.rcon_port, eff.get("admin_password") or "", "DoExit", timeout=15)
+    except (rcon.RconError, podman.PodmanTimeout) as exc:
+        log(f"Could not ask {server.name} to quit ({exc}); forcing it down.")
+        return
+    log(f"Asked {server.name} to quit; waiting up to {settings.exit_wait_s} s.")
+    end = time.time() + settings.exit_wait_s
+    while time.time() < end:
+        try:
+            if podman.exec_(name, ["pgrep", "-f", "ArkAscendedServer.exe"], timeout=20) == 1:
+                log(f"{server.name} has quit.")
+                return
+        except podman.PodmanTimeout:
+            pass
+        time.sleep(POLL_S)
+    log(f"{server.name} did not quit within {settings.exit_wait_s} s; forcing it down.")
 
 
 # -- adopt / rollback ---------------------------------------------------------
@@ -656,10 +712,12 @@ def update(server_id: str, log, force: bool = False, make_room: bool = False, jo
         decision = admission.admit(state.snapshot(), "start", server_id)
         if not decision.ok and make_room and decision.victims:
             # Otherwise the update boot waits for memory like any start.
-            victims = decision.victims
-            for v in victims:
+            for v in decision.victims:
+                if state.live(v).container_state != "running":
+                    continue           # already stopped (or stopping): nothing to bring back
                 log(f"Making room for the update: stopping {store.server(v).name}.")
                 stop(v, log, reason="make room for update")
+                victims.append(v)
     try:
         set_stage((job or {}).get("id"), "backing_up", "Backing up the world before the update")
         backups.create(server, cluster, "pre-update", log)
@@ -675,8 +733,73 @@ def update(server_id: str, log, force: bool = False, make_room: bool = False, jo
         for v in victims:
             other = store.server(v)
             log(f"Bringing {other.name} back.")
+            abort_flag(v).clear()      # left set by the stop above
             try:
                 start(v, log)
             except Exception as exc:  # noqa: BLE001 - report, keep restoring the others
                 log(f"Could not bring {other.name} back: {exc}")
     return f"{server.name} updated to build {latest or after}."
+
+
+def update_cluster(cluster_id: str, log, job: dict | None = None) -> str:
+    """
+    Update a whole cluster: save and stop every running map at once (forced
+    if it is slow), then update each map that is behind, one at a time. Maps
+    are left stopped afterwards.
+    """
+    import threading
+
+    from engine.supervisor import abort_flag as _flag
+
+    job_id = (job or {}).get("id")
+    cluster = store.cluster(cluster_id)
+    if cluster is None:
+        raise RuntimeError("Unknown cluster.")
+    servers = sorted(store.servers(cluster_id), key=lambda s: s.priority)
+    latest, error = steam.latest_build(force=True)
+    behind = [s for s in servers if not latest or steam.installed_build(s.install_dir) != latest]
+    log(f"Latest build {latest or '?'}{' (' + error + ')' if error else ''}; "
+        f"behind: {', '.join(s.name for s in behind) or 'none'}.")
+    if not behind:
+        return f"Every map in {cluster.name} is already on build {latest}."
+
+    running = [s for s in servers
+               if ((podman.inspect(s.container_name) or {}).get("State") or {}).get("Running")]
+    if running:
+        set_stage(job_id, "stopping", f"Saving and stopping {', '.join(s.name for s in running)}")
+        log(f"Saving and stopping {', '.join(s.name for s in running)}.")
+        failures: dict[str, str] = {}
+
+        def _one(s) -> None:
+            try:
+                _desire(s.id, "stopped")
+                stop(s.id, lambda m, n=s.name: log(f"[{n}] {m}"), reason="cluster update")
+            except Exception as exc:  # noqa: BLE001 - reported below
+                failures[s.name] = str(exc)
+
+        threads = [threading.Thread(target=_one, args=(s,), name=f"ca-stop-{s.id}") for s in running]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+        if failures:
+            raise RuntimeError("Could not stop " + "; ".join(f"{k}: {v}" for k, v in failures.items()))
+
+    done, failed = [], []
+    for i, s in enumerate(behind, start=1):
+        if cancel_requested(job_id):
+            raise Aborted(f"Cluster update cancelled before {s.name}.")
+        _flag(s.id).clear()      # a flag left by an earlier stop must not abort this boot
+        set_stage(job_id, "updating", f"Updating {s.name} ({i} of {len(behind)})")
+        log(f"--- Updating {s.name} ({i} of {len(behind)}) ---")
+        try:
+            done.append(update(s.id, log, job=job))
+        except Aborted:
+            raise
+        except Exception as exc:  # noqa: BLE001 - carry on with the next map
+            log(f"Updating {s.name} failed: {exc}")
+            failed.append(f"{s.name}: {exc}")
+    summary = " ".join(done) + (" Failed: " + "; ".join(failed) if failed else "") + " Maps left stopped."
+    if failed and not done:
+        raise RuntimeError(summary.strip())
+    return summary.strip()

@@ -23,9 +23,9 @@ STAGES = {
     "preparing": "Getting ready", "loading": "Loading the world", "verifying": "Checking it answers",
     "settling": "Settling", "measuring": "Measuring memory", "retrying": "Retrying",
     "stopping": "Saving and stopping", "making_room": "Making room", "backing_up": "Backing up",
-    "restoring": "Unpacking the backup", "warning": "Counting down in chat", "copying": "Copying game files",
+    "restoring": "Unpacking the backup", "updating": "Updating", "warning": "Counting down in chat", "copying": "Copying game files",
 }
-CANCELLABLE = ("start", "restart", "make_room_start", "update", "warned_restart", "add_map")
+CANCELLABLE = ("start", "restart", "make_room_start", "update", "warned_restart", "add_map", "update_cluster")
 
 # Map colours for the memory bar, by position in the cluster list.
 _COLOURS = ("#38bdf8", "#a78bfa", "#34d399", "#f472b6", "#fbbf24", "#60a5fa", "#fb923c", "#2dd4bf")
@@ -174,6 +174,7 @@ class DashboardView:
             limits.append(f"capped at {gib(c['memory_cap'])}")
         mods = len((c.get("defaults") or {}).get("mod_ids") or [])
         cards = "".join(self._server(s, colours.get(s["id"], "#64748b")) for s in c["servers"])
+        behind = " ca-primary" if any((s.get("flags") or {}).get("update_available") for s in c["servers"]) else ""
         return f"""
 <section class="ca-cluster">
   <div class="ca-cluster-head">
@@ -184,6 +185,8 @@ class DashboardView:
     </div>
     <div class="ca-sub"><button class="ca-btn" data-act="start_cluster" data-cluster="{esc(c["id"])}">
         <span class="mdi mdi-play-box-multiple-outline"></span> Start all</button>
+      <button class="ca-btn{behind}" data-act="update_cluster" data-cluster="{esc(c["id"])}">
+        <span class="mdi mdi-update"></span> Update all</button>
       <a href="#/cluster/{esc(c["id"])}/add"><span class="mdi mdi-map-plus"></span> Add a map</a> ·
       <a href="#/cluster/{esc(c["id"])}/settings"><span class="mdi mdi-tune"></span> Game settings</a>
       · <a href="#/cluster/{esc(c["id"])}/mods"><span class="mdi mdi-puzzle-outline"></span> Mods</a>
@@ -301,6 +304,8 @@ class DashboardView:
             spawn(self._cancel_queue(), "cancel queue")
         elif act == "start_cluster":
             spawn(self._start_cluster(attr(btn, "data-cluster")), "start cluster")
+        elif act == "update_cluster":
+            spawn(self._update_cluster(attr(btn, "data-cluster")), "update cluster")
         else:
             spawn(self._act(attr(btn, "data-id"), act), act)
 
@@ -350,6 +355,21 @@ class DashboardView:
         result = await ServerApi().start_cluster_async(cluster_id)
         if not failed(result, "queue the starts"):
             toast(f"Queued: {', '.join(result['queued']) or 'nothing (all running)'}.", kind="success")
+        await self.refresh()
+
+    async def _update_cluster(self, cluster_id: str) -> None:
+        if not await message.confirm(
+                "Update every map in this cluster to the latest ASA build?\n\n"
+                "Every running map is saved and stopped at once (forced down if it is slow to quit), "
+                "then each map that is behind is backed up and updated, one at a time. "
+                "Maps are NOT started again afterwards: use Start all when it is done.",
+                title="Update all", ok_text="Stop and update", danger=True):
+            return
+        result = await ServerApi().update_cluster_async(cluster_id)
+        if not failed(result, "queue the cluster update"):
+            pos = result.get("position")
+            where = f" (number {pos} in the queue)" if pos and pos > 1 else ""
+            toast(f"Cluster update queued{where}.", kind="success")
         await self.refresh()
 
     async def _cancel_queue(self) -> None:

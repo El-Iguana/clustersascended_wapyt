@@ -37,7 +37,8 @@ class HostSettings:
     settle_s: int = 60                  # wait after "ready" before the next start
     ready_timeout_s: int = 1200         # start → advertising for join
     rcon_timeout_s: int = 180           # ready → RCON answers
-    stop_timeout_s: int = 300           # SIGTERM grace for ASA to flush its save
+    stop_timeout_s: int = 300           # SIGTERM grace when the save could not be confirmed
+    exit_wait_s: int = 90               # after a confirmed save: time for ASA to quit before it is forced
     save_timeout_s: int = 180           # RCON saveworld
     update_timeout_s: int = 2400        # an update pass: SteamCMD download + first load
     # Watchdog: act before the kernel's OOM killer does.

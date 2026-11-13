@@ -93,6 +93,13 @@ def main(argv):
         data["containers"][new] = data["containers"].pop(old)
         save(data)
         return 0
+    if cmd == "exec":    # touch the shutdown flag; pgrep: the game quits after DoExit unless "no_quit"
+        c = data["containers"].get(argv[1])
+        if c is None or c["state"] != "running":
+            return 125
+        if "pgrep" in argv:
+            return 0 if c.get("no_quit") else 1
+        return 0
     name = argv[-1]
     c = data["containers"].get(name)
     if c is None:
