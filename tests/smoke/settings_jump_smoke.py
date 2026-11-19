@@ -1,10 +1,11 @@
 """Game settings: the group buttons scroll to their group (run against the live app)."""
+import os
 from playwright.sync_api import sync_playwright
 URL = "https://192.168.1.97:8099"
 with sync_playwright() as p:
     b = p.chromium.launch(); ctx = b.new_context(ignore_https_errors=True, viewport={"width": 1400, "height": 900}); page = ctx.new_page()
     page.goto(f"{URL}/clusters_ascended/login"); page.fill('input[name="email"]', "admin")
-    page.fill('input[name="password"]', "changeme"); page.keyboard.press("Enter")
+    page.fill('input[name="password"]', os.environ["CA_PASSWORD"]); page.keyboard.press("Enter")
     page.wait_for_selector("#ca-dash .ca-server", timeout=120_000)
     page.evaluate("location.hash = '#/cluster/oldmangan/settings'")
     page.wait_for_selector("#ca-game-form fieldset", timeout=60_000)
