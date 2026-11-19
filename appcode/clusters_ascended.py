@@ -199,6 +199,21 @@ _CSS = """
 .ca-btn[aria-pressed="true"]{background:#1e3a8a;border-color:#3b82f6;color:#fff;}
 .ca-ranges{display:flex;gap:6px;flex-wrap:wrap;}
 .ca-chart{position:relative;height:340px;margin:10px 0 6px;}
+.ca-files{display:flex;flex-direction:column;gap:10px;}
+.ca-crumbs{color:#94a3b8;font-size:13px;}
+.ca-files-split{display:grid;grid-template-columns:minmax(300px,2fr) 3fr;gap:14px;align-items:start;}
+.ca-files-list{max-height:calc(100vh - 290px);border:1px solid #1f2937;border-radius:8px;}
+.ca-files-row,.ca-files-list tr[data-dir]{cursor:pointer;}
+.ca-files-list tr:hover td{background:#152036;}
+.ca-files-list td:nth-child(n+2){white-space:nowrap;color:#94a3b8;}
+.ca-files-list tr.ca-picked td{background:#1e3a8a55;}
+.ca-files-view{display:flex;flex-direction:column;gap:8px;min-width:0;}
+.ca-files-view h2{margin:0;font-size:15px;word-break:break-all;}
+.ca-files-text{width:100%;box-sizing:border-box;min-height:calc(100vh - 380px);background:#0b1020;color:#e5e7eb;
+  border:1px solid #1f2937;border-radius:8px;padding:10px;font:12.5px/1.45 ui-monospace,Menlo,Consolas,monospace;
+  white-space:pre;overflow:auto;resize:vertical;}
+.ca-files-text[readonly]{color:#cbd5e1;}
+@media (max-width:900px){.ca-files-split{grid-template-columns:1fr;}.ca-files-text{min-height:50vh;}}
 .ca-btn.ca-primary{background:#2563eb;border-color:#2563eb;color:#fff;}
 .ca-btn.ca-primary:hover{background:#1d4ed8;}
 .ca-btn.ca-danger{border-color:#7f1d1d;color:#fca5a5;}

@@ -34,7 +34,7 @@ GROUPS = (
 _ROWS = (
     # Difficulty
     ("OverrideOfficialDifficulty", "gus", "difficulty", "float", 0.0, 0.0, 10.0, 0.5, "Difficulty",
-     "With difficulty offset 1.0, wild creatures reach level 30 × this (5 = level 150, 0 = the map's own).",
+     "Wild creatures reach level 30 × this (5 = level 150, 6 = 180). At 0 the difficulty offset decides.",
      False),
     # Experience
     ("XPMultiplier", "gus", "xp", "mult", 1.0, 0.5, 20.0, 0.5, "All experience", "", False),
@@ -147,7 +147,8 @@ _ROWS = (
     ("PreventUploadItems", "gus", "travel", "bool", False, None, None, None, "Block leaving items", "", False),
     # Advanced
     ("DifficultyOffset", "gus", "advanced", "float", 1.0, 0.0, 1.0, 0.05, "Difficulty offset",
-     "Scales the difficulty above; 1.0 makes wild levels reach 30 × difficulty.", False),
+     "Only used when Difficulty is 0: wild levels reach 30 × (offset × 3.5 + 0.5), so 1.0 = level 120. "
+     "Ignored when Difficulty is set.", False),
     ("ResourceNoReplenishRadiusPlayers", "game", "advanced", "mult", 1.0, 0.0, 2.0, 0.1,
      "Regrow distance from survivors", "Lower: resources regrow closer to players.", False),
     ("ResourceNoReplenishRadiusStructures", "game", "advanced", "mult", 1.0, 0.0, 2.0, 0.1,
@@ -247,10 +248,19 @@ def differs(values: dict) -> list:
     return [k for k in ORDER if k in values and not is_default(k, values[k])]
 
 
-def wild_level(values: dict) -> int | None:
-    """Max wild level implied by difficulty and offset (None: the map's own)."""
+MAP_DIFFICULTY = 4.0     # the official maps' own difficulty
+
+
+def wild_level(values: dict) -> int:
+    """
+    Max level of common wild creatures (30 steps × difficulty; some, like
+    wyverns, have more steps). OverrideOfficialDifficulty, when set, *is* the
+    difficulty and DifficultyOffset is ignored; otherwise the offset scales the
+    map's difficulty: offset × (4 − 0.5) + 0.5. Source: ark.wiki.gg/wiki/Difficulty
+    (checked 2026-11-19), matching ASA players' reports (6.0 → 180).
+    """
     diff = float(values.get("OverrideOfficialDifficulty", 0.0) or 0.0)
     if diff <= 0:
-        return None
-    offset = float(values.get("DifficultyOffset", 1.0))
-    return int(round(30 * (offset * (diff - 0.5) + 0.5)))
+        offset = float(values.get("DifficultyOffset", 1.0))
+        diff = offset * (MAP_DIFFICULTY - 0.5) + 0.5
+    return int(round(30 * diff))

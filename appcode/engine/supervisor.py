@@ -30,7 +30,7 @@ LANES = ("lifecycle", "stop", "io")
 KIND_LANE = {"start": "lifecycle", "restart": "lifecycle", "make_room_start": "lifecycle",
              "adopt": "lifecycle", "rollback": "lifecycle", "update": "lifecycle",
              "restore": "lifecycle", "warned_restart": "lifecycle", "add_map": "lifecycle",
-             "update_cluster": "lifecycle", "remove_map": "lifecycle",
+             "update_cluster": "lifecycle", "remove_map": "lifecycle", "retire_old": "lifecycle",
              "stop": "stop", "backup": "io"}
 ACTIVE = ("queued", "running")
 

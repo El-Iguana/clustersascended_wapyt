@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from pytincture.dataclass import backend_for_frontend, bff_policy
 
-ACTIONS = ("start", "stop", "restart", "make_room_start", "adopt", "rollback", "update", "backup", "remove_map")
+ACTIONS = ("start", "stop", "restart", "make_room_start", "adopt", "rollback", "update", "backup", "remove_map", "retire_old")
 
 
 @backend_for_frontend

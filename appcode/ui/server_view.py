@@ -6,6 +6,7 @@ A map's page, in tabs:
 * ``#/map/<id>/console``   Console: the game log and admin commands
 * ``#/map/<id>/settings``  Settings: the map's own settings, game settings and mods
 * ``#/map/<id>/backups``   Backups
+* ``#/map/<id>/files``     Files: world and settings, game files, transfers (ui/files_tab.py)
 """
 from __future__ import annotations
 
@@ -17,6 +18,7 @@ from services.fmt import duration, gib, phase_label
 from services.server_api import ServerApi
 from ui.common import Listeners, attr, closest, esc, failed, spawn, toast
 from ui.console_tab import ConsoleTab
+from ui.files_tab import FilesTab
 from ui.players_tab import PlayersTab
 from ui.map_game import MapGame, html as map_game_html
 from ui.memory_chart import map_chart, no_readings, ranges_html, set_pressed
@@ -26,7 +28,7 @@ GiB = 1024 ** 3
 
 TABS = (("", "Overview", "mdi-view-dashboard-outline"), ("players", "Players", "mdi-account-multiple"),
         ("console", "Console", "mdi-console"), ("settings", "Settings", "mdi-tune"),
-        ("backups", "Backups", "mdi-backup-restore"))
+        ("backups", "Backups", "mdi-backup-restore"), ("files", "Files", "mdi-folder-outline"))
 
 
 def _clock(ts) -> str:
@@ -61,8 +63,8 @@ class ServerView:
             f'<nav class="ca-tabs">{tabs}</nav><div id="ca-map-body" class="ca-map-body">'
             '<div class="ca-empty">Loading…</div></div></div>')
         body = js.document.getElementById("ca-map-body")
-        if self.tab in ("players", "console"):
-            self.child = (PlayersTab if self.tab == "players" else ConsoleTab)(body, self.server_id)
+        if self.tab in ("players", "console", "files"):
+            self.child = {"players": PlayersTab, "console": ConsoleTab, "files": FilesTab}[self.tab](body, self.server_id)
             self.child.mount()
         else:
             self.listeners.on(self.el, "click", self._on_click)
@@ -102,7 +104,7 @@ class ServerView:
         self.data = result
         self.game.set_cluster(result["game"]["cluster"])
         self._head(result)
-        if self.tab in ("players", "console"):
+        if self.tab in ("players", "console", "files"):
             return
         body = js.document.getElementById("ca-map-body")
         if body:
@@ -209,6 +211,9 @@ class ServerView:
             b.append('<button class="ca-btn" data-act="adopt"><span class="mdi mdi-hand-heart-outline"></span> Adopt</button>')
         if cont.get("old_exists"):
             b.append('<button class="ca-btn" data-act="rollback"><span class="mdi mdi-undo"></span> Roll back</button>')
+            if cont.get("managed"):
+                b.append('<button class="ca-btn" data-act="retire_old"><span class="mdi mdi-delete-clock-outline"></span> '
+                         "Remove old compose container</button>")
         if cont.get("managed"):
             b.append('<button class="ca-btn" data-act="update"><span class="mdi mdi-update"></span> Update</button>')
         b.append('<button class="ca-btn" data-act="backup"><span class="mdi mdi-archive-arrow-down-outline"></span> Back up</button>')
@@ -357,12 +362,16 @@ class ServerView:
                       "Adopt", False),
             "rollback": (f"Put {name}'s compose container back?\n\nThe app's container is removed (saves stay).",
                          "Roll back", True),
+            "retire_old": (f"Remove {name}'s old compose container?\n\nIts world and game files are not touched, "
+                           "and the map keeps running. Rolling back to podman-compose is no longer possible.",
+                           "Remove it", True),
             "update": (f"Update {name} to the latest ASA build?\n\nIt is backed up, booted once to download the "
                        "update, and brought back if it was running.", "Update", False),
         }
         if act in confirms:
             text, ok, danger = confirms[act]
-            if not await message.confirm(text, title=act.capitalize(), ok_text=ok, danger=danger):
+            title = {"retire_old": "Remove old container"}.get(act, act.capitalize())
+            if not await message.confirm(text, title=title, ok_text=ok, danger=danger):
                 return
         if act == "remove_map":
             box = js.document.querySelector('#ca-view input[name="delete_files"]')

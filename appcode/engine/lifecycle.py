@@ -72,6 +72,8 @@ def run(job: dict, log) -> str:
                       job=job)
     if kind == "update_cluster":
         return update_cluster(params["cluster"], log, job)
+    if kind == "retire_old":
+        return retire_old(server_id, log)
     if kind == "remove_map":
         return remove_map(server_id, log, delete_files=bool(params.get("delete_files")))
     if kind == "backup":
@@ -546,6 +548,22 @@ def rollback(server_id: str, log) -> str:
     store.save_server(s)
     state.request_refresh()
     return f"{server.name} is back on its compose container (stopped)."
+
+
+def retire_old(server_id: str, log) -> str:
+    """Remove the kept compose container once the app's own has proved itself. No file is touched."""
+    server, *_ = _context(server_id)
+    old_name = server.container_name + OLD_SUFFIX
+    old = podman.inspect(old_name)
+    if old is None:
+        return f"{server.name} has no old compose container."
+    if not is_managed(podman.inspect(server.container_name)):
+        raise Refused(f"{server.name} does not run in the app's own container yet: keep {old_name}.")
+    if (old.get("State") or {}).get("Running"):
+        raise Refused(f"{old_name} is running; it should never be. Stop it first.")
+    podman.remove(old_name)
+    log(f"Removed {old_name}. Its world and game files were never in the container: nothing else changed.")
+    return f"{server.name}: the old compose container is gone (no rollback now)."
 
 
 # -- restore and warned restarts ----------------------------------------------

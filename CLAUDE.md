@@ -97,8 +97,9 @@ in `~/asa-cluster`). Full plan: `~/.claude/plans/tender-meandering-panda.md`.
   mutton, fertilizer) ignore the global multiplier. Cryopods are left out (stacking breaks them);
   mutton overrides reportedly may not apply on servers; fertilizer is used a whole stack at a time.
   Class names and ASA defaults were checked against the ARK wiki and wikily.gg (2026-11-11).
-- The "wild level" figure uses the wiki's ASE formula (30 × (offset × (difficulty − 0.5) + 0.5)):
-  shown as "about"; unverified for ASA.
+- The "wild level" figure (2026-11-19, ark.wiki.gg/wiki/Difficulty + ASA players' reports): when
+  `OverrideOfficialDifficulty` > 0 it *is* the difficulty (level 30 × it) and `DifficultyOffset` is
+  ignored; at 0, difficulty = offset × (4 − 0.5) + 0.5. Common creatures only (wyverns etc. have 38 steps).
 
 ## Backups, restore and schedules (2026-11-11)
 
@@ -166,6 +167,20 @@ in `~/asa-cluster`). Full plan: `~/.claude/plans/tender-meandering-panda.md`.
   app's container (a compose container is refused; `.compose-old` is kept). Rows go (runs, sessions,
   backup list); files stay unless `delete_files`, and even then a folder another map or the transfer
   folder uses is kept. **Delete cluster** only when it has no maps; it removes empty folders only.
+
+## Files tab and retiring compose containers (2026-11-19)
+
+- `#/map/<id>/files` (`ui/files_tab.py` → `services/files_api.py` → `engine/files.py`): three roots —
+  the map's Saved (world and settings), its install and the cluster's transfer folder (both read-only).
+  Paths are resolved and must stay under the root (`..` and symlinks out are refused). Text files show
+  (last 2 MB of a big log); binary ones are not shown.
+- Editing: existing `.ini/.txt/.json/.cfg` in Saved only, map stopped, ≤ 2 MB UTF-8, safe names (the
+  write goes through `podman unshare` via `game_settings._write`), refused if the file changed since it
+  was opened (mtime). CRLF is kept (a textarea sends LF). The old copy goes to
+  `data/file-backups/<server>/` (last 10). GameUserSettings.ini / Game.ini carry a note: the app rewrites
+  the keys it manages at each start.
+- `retire_old` job (map page button once the app's own container exists): removes `<name>.compose-old`,
+  never a running one, touches no file. Rollback to compose is gone after it.
 
 ## Memory history (2026-11-19)
 
