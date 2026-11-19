@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from pytincture.dataclass import backend_for_frontend, bff_policy
 
-ACTIONS = ("start", "stop", "restart", "make_room_start", "adopt", "rollback", "update", "backup")
+ACTIONS = ("start", "stop", "restart", "make_room_start", "adopt", "rollback", "update", "backup", "remove_map")
 
 
 @backend_for_frontend
@@ -27,6 +27,8 @@ class ServerApi:
             clean = {"force": bool(p.get("force")), "make_room": bool(p.get("make_room"))}
         elif action == "backup":
             clean = {"kind": "manual", "note": str(p.get("note") or "")[:200]}
+        elif action == "remove_map":
+            clean = {"delete_files": bool(p.get("delete_files"))}
         return supervisor.enqueue(action, str(server_id), requested_by=actor(self._user), params=clean)
 
     def start_cluster(self, cluster_id: str) -> dict:

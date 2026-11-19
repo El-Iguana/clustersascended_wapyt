@@ -48,6 +48,15 @@ _app_starts: set[str] = set()
 _updated_at = 0.0
 
 
+def forget(server_id: str) -> None:
+    """A removed map."""
+    with _lock:
+        _live.pop(server_id, None)
+        _overrides.pop(server_id, None)
+        _end_reasons.pop(server_id, None)
+        _app_starts.discard(server_id)
+
+
 def live(server_id: str) -> Live:
     with _lock:
         return copy.deepcopy(_live.get(server_id) or Live())

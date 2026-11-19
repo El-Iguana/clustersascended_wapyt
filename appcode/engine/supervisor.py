@@ -30,7 +30,7 @@ LANES = ("lifecycle", "stop", "io")
 KIND_LANE = {"start": "lifecycle", "restart": "lifecycle", "make_room_start": "lifecycle",
              "adopt": "lifecycle", "rollback": "lifecycle", "update": "lifecycle",
              "restore": "lifecycle", "warned_restart": "lifecycle", "add_map": "lifecycle",
-             "update_cluster": "lifecycle",
+             "update_cluster": "lifecycle", "remove_map": "lifecycle",
              "stop": "stop", "backup": "io"}
 ACTIVE = ("queued", "running")
 
@@ -117,6 +117,9 @@ def enqueue(kind: str, server_id: str, requested_by: str = "admin", params: dict
                                           f"{busy[0]['state']}."}
         if kind == "stop" and any(j["kind"] == "stop" for j in busy):
             return {"ok": False, "error": f"{server.name} is already being stopped."}
+        if kind == "remove_map" and (state.phase(server_id) not in ("stopped", "absent", "unknown")
+                                     or any(j["server"] == server_id for j in store.jobs(limit=200, states=ACTIVE))):
+            return {"ok": False, "error": f"Stop {server.name} (and let its jobs finish) before removing it."}
         decision = None
         if kind in admission.START_KINDS:
             snap = state.snapshot()

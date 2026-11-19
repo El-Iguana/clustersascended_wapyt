@@ -162,6 +162,10 @@ in `~/asa-cluster`). Full plan: `~/.claude/plans/tender-meandering-panda.md`.
   folder means the same cluster, and only maps not yet known are added. A collision with anything else
   (cluster name, ClusterId, transfer folder, service id, container, port, Saved folder) refuses the whole
   import, which is written in one transaction.
+- **Remove a map** (`remove_map` job, lifecycle lane, `lifecycle.remove_map`): only stopped and only the
+  app's container (a compose container is refused; `.compose-old` is kept). Rows go (runs, sessions,
+  backup list); files stay unless `delete_files`, and even then a folder another map or the transfer
+  folder uses is kept. **Delete cluster** only when it has no maps; it removes empty folders only.
 
 ## Layout
 

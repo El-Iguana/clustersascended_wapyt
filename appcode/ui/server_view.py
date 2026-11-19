@@ -120,7 +120,22 @@ class ServerView:
         if self.tab == "backups":
             return self._backups(d)
         return f"""<section class="ca-card" id="ca-map-status">{self._status(d)}</section>
-{self._runs(d)}"""
+{self._runs(d)}{self._remove(d)}"""
+
+    @staticmethod
+    def _remove(d: dict) -> str:
+        """Outside the status box, which refreshes (the tick box would reset)."""
+        if d["phase"] not in ("stopped", "absent"):
+            return ""
+        return """
+<section class="ca-card"><details class="ca-more"><summary>Remove this map</summary>
+  <div class="ca-sub">Takes it out of the app and removes its container. Its world and game files stay on the
+    disk unless you tick the box.</div>
+  <label class="ca-radio"><input type="checkbox" name="delete_files"> Also delete its world, game files and
+    backups (this cannot be undone)</label>
+  <div class="ca-actions"><button class="ca-btn ca-danger" data-act="remove_map"><span class="mdi mdi-delete-outline"></span>
+    Remove map</button></div>
+</details></section>"""
 
     def _status(self, d: dict) -> str:
         s, live, cont, build = d["server"], d["live"], d["container"], d["build"]
@@ -307,6 +322,20 @@ class ServerView:
             text, ok, danger = confirms[act]
             if not await message.confirm(text, title=act.capitalize(), ok_text=ok, danger=danger):
                 return
+        if act == "remove_map":
+            box = js.document.querySelector('#ca-view input[name="delete_files"]')
+            wipe = bool(box and box.checked)
+            text = (f"Remove {name} and permanently delete its world, game files and backups?" if wipe else
+                    f"Remove {name} from the app?\n\nIts world and game files stay on the disk.")
+            if not await message.confirm(text, title="Remove map", ok_text="Delete everything" if wipe else "Remove",
+                                         danger=True):
+                return
+            result = await ServerApi().act_async(self.server_id, act, {"delete_files": wipe})
+            if failed(result, f"remove {name}"):
+                return
+            toast(f"Removing {name}…", kind="success")
+            js.window.location.hash = f"#/jobs/{result['job']['id']}"
+            return
         if act == "update":
             build = self.data.get("build") or {}
             params = {"force": not build.get("update_available"), "make_room": True}

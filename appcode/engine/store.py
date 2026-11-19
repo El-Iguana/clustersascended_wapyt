@@ -183,6 +183,15 @@ def delete_cluster(cluster_id: str) -> None:
     export_config()
 
 
+def delete_server(server_id: str) -> None:
+    """A map and its history (jobs and the audit log keep their rows)."""
+    with transaction() as c:
+        for table in ("server_runs", "player_sessions", "backups"):
+            c.execute(f"DELETE FROM {table} WHERE server=?", (server_id,))
+        c.execute("DELETE FROM servers WHERE id=?", (server_id,))
+    export_config()
+
+
 def servers(cluster_id: Optional[str] = None) -> list[Server]:
     sql = "SELECT data FROM servers"
     args: tuple = ()
