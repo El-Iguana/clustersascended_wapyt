@@ -48,6 +48,20 @@ def busy_maps() -> list[str]:
     return out
 
 
+def must_stop_first() -> str:
+    """
+    Why a map or cluster can't be added right now ("" when it can): every map
+    on this machine, in every cluster, must be stopped and nothing being added.
+    Callers hold ``supervisor._enqueue_lock`` so no start sneaks in between.
+    """
+    busy = busy_maps()
+    if busy:
+        return f"Stop every map first (still running or busy: {', '.join(busy)})."
+    if any(j["kind"] == "add_map" for j in store.jobs(limit=50, states=("queued", "running"))):
+        return "A map is being added; wait for it to finish."
+    return ""
+
+
 def ports_in_use() -> set[int]:
     used = set()
     for flag in ("-Hlun", "-Hltn"):
@@ -105,7 +119,7 @@ def suggest(cluster_id: str) -> dict:
             "session": session, "game_port": game, "rcon_port": rcon_port,
             "priority": max([s.priority for s in mine] or [0]) + 1,
             "taken_maps": sorted({s.map_name for s in mine}), "sources": sources,
-            "disk_free": usage.free, "busy": busy_maps(),
+            "disk_free": usage.free, "busy": busy_maps(), "why": must_stop_first(),
             "latest_build": steam.cached_latest()[0]}
 
 

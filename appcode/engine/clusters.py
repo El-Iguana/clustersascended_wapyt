@@ -95,9 +95,13 @@ def plan(values: dict) -> Cluster:
 
 
 def create(values: dict, actor: str = "admin") -> dict:
-    from engine import scheduler
+    """A new, empty cluster: only with every map on this machine stopped."""
+    from engine import scheduler, supervisor
 
-    with _lock:
+    with _lock, supervisor._enqueue_lock:
+        why = addmap.must_stop_first()
+        if why:
+            raise Invalid(why)
         c = plan(values)
         root = Path(c.root_dir)
         made_root = not root.exists()

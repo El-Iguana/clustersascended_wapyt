@@ -68,6 +68,12 @@ class ClusterApi:
 
         return supervisor.enqueue_add_map(str(cluster_id), dict(values or {}), requested_by=actor(self._user))
 
+    def stop_first(self) -> dict:
+        """Whether maps or clusters can be added now: every map stopped, nothing being added."""
+        from engine import addmap
+
+        return {"ok": True, "busy": addmap.busy_maps(), "why": addmap.must_stop_first()}
+
     def stop_all(self) -> dict:
         """Save and stop every running map on this machine (for the wizard)."""
         from engine import state, store, supervisor

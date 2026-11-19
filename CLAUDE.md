@@ -182,6 +182,14 @@ in `~/asa-cluster`). Full plan: `~/.claude/plans/tender-meandering-panda.md`.
 - `retire_old` job (map page button once the app's own container exists): removes `<name>.compose-old`,
   never a running one, touches no file. Rollback to compose is gone after it.
 
+## Adding needs every map stopped (2026-11-19)
+
+- Adding a map, creating a cluster and importing a compose file all need every map on the host (all
+  clusters) stopped and no add under way: `addmap.must_stop_first()` ("" when clear), checked under
+  `supervisor._enqueue_lock` so no start slips in. Import also checks before copying the compose file.
+- UI: `ui/stop_first.py` banner + "Save and stop every map" (ClusterApi.stop_first / stop_all), polled
+  every 4 s on the wizard, New cluster and Import pages; their buttons stay disabled until clear.
+
 ## Auto-update and restart after updates (2026-11-19)
 
 - `update_cluster` now starts the maps that were running again afterwards (one at a time through
