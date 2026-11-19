@@ -9,7 +9,7 @@ Conventions from the sibling wapyt apps:
 * DOM misses come back as ``JsNull``, which is falsy but not ``None``.
 
 Routes (URL hash): ``#/`` dashboard, ``#/cluster/<id>``, ``#/map/<id>``,
-``#/jobs[/<id>]``, ``#/host``, ``#/new-cluster``, ``#/import``.
+``#/jobs[/<id>]``, ``#/host``, ``#/memory``, ``#/new-cluster``, ``#/import``.
 """
 from __future__ import annotations
 
@@ -31,6 +31,7 @@ from ui.common import APPLICATION, Listeners, by_id, spawn
 from ui.dashboard import DashboardView
 from ui.host import HostView
 from ui.import_view import ImportView
+from ui.memory_view import MemoryView
 from ui.new_cluster import NewClusterView
 from ui.jobs import JobsView
 from ui.server_view import ServerView
@@ -122,6 +123,8 @@ class ClustersAscended(MainWindow):
             self._view = JobsView(container, job)
         elif page == "host":
             self._view = HostView(container)
+        elif page == "memory":
+            self._view = MemoryView(container)
         elif page == "new-cluster":
             self._view = NewClusterView(container)
         elif page == "import":
@@ -133,7 +136,7 @@ class ClustersAscended(MainWindow):
         else:
             page = "dashboard"
             self._view = DashboardView(container)
-        nav = {"map": "dashboard", "cluster": "dashboard"}.get(page, page)
+        nav = {"map": "dashboard", "cluster": "dashboard", "memory": "dashboard"}.get(page, page)
         try:
             self.toolbar.set_active(nav, True)
         except Exception:  # noqa: BLE001 - cosmetic
@@ -193,6 +196,9 @@ _CSS = """
   border-radius:7px;padding:6px 12px;font:inherit;font-size:13px;cursor:pointer;text-decoration:none;}
 .ca-btn:hover{background:#273449;}
 .ca-btn[disabled]{opacity:.45;cursor:not-allowed;}
+.ca-btn[aria-pressed="true"]{background:#1e3a8a;border-color:#3b82f6;color:#fff;}
+.ca-ranges{display:flex;gap:6px;flex-wrap:wrap;}
+.ca-chart{position:relative;height:340px;margin:10px 0 6px;}
 .ca-btn.ca-primary{background:#2563eb;border-color:#2563eb;color:#fff;}
 .ca-btn.ca-primary:hover{background:#1d4ed8;}
 .ca-btn.ca-danger{border-color:#7f1d1d;color:#fca5a5;}

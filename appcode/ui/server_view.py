@@ -19,6 +19,7 @@ from ui.common import Listeners, attr, closest, esc, failed, spawn, toast
 from ui.console_tab import ConsoleTab
 from ui.players_tab import PlayersTab
 from ui.map_game import MapGame, html as map_game_html
+from ui.memory_chart import map_chart, no_readings, ranges_html, set_pressed
 from ui.mods import handle as mods_handle, html as mods_html, read as mods_read
 
 GiB = 1024 ** 3
@@ -46,6 +47,8 @@ class ServerView:
         self.data: dict = {}
         self.game = MapGame(server_id)
         self.child = None
+        self.mem_range = "24h"
+        self.mem_chart = None
 
     def mount(self) -> None:
         tabs = "".join(
@@ -66,12 +69,17 @@ class ServerView:
             self.listeners.on(self.el, "change", self._on_change)
             self.listeners.on(self.el, "input", self._on_input)
         self.listeners.every(5000, lambda: spawn(self.refresh_status(), "map status"))
+        if self.tab == "":
+            self.listeners.every(60000, lambda: spawn(self._memory(), "map memory"))
         spawn(self.load(), "map load")
 
     def unmount(self) -> None:
         if self.child is not None:
             self.child.unmount()
         self.listeners.clear()
+        if self.mem_chart is not None:
+            self.mem_chart.destroy()
+            self.mem_chart = None
 
     def _head(self, d: dict) -> None:
         s = d["server"]
@@ -98,7 +106,12 @@ class ServerView:
             return
         body = js.document.getElementById("ca-map-body")
         if body:
+            if self.mem_chart is not None:
+                self.mem_chart.destroy()
+                self.mem_chart = None
             body.innerHTML = self._render(result)
+            if self.tab == "":
+                spawn(self._memory(), "map memory")
 
     async def refresh_status(self) -> None:
         result = await ServerApi().detail_async(self.server_id)
@@ -120,7 +133,30 @@ class ServerView:
         if self.tab == "backups":
             return self._backups(d)
         return f"""<section class="ca-card" id="ca-map-status">{self._status(d)}</section>
+<section class="ca-card"><div class="ca-host-head"><h2>Memory</h2>{ranges_html(self.mem_range)}</div>
+  <div class="ca-sub" id="ca-map-mem-sum"></div>
+  <div class="ca-chart" id="ca-map-mem" data-wapyt-theme="dark"></div></section>
 {self._runs(d)}{self._remove(d)}"""
+
+    async def _memory(self) -> None:
+        d = await ServerApi().memory_history_async(self.server_id, self.mem_range)
+        box = js.document.getElementById("ca-map-mem")
+        summary = js.document.getElementById("ca-map-mem-sum")
+        if not d.get("ok") or not box:
+            return
+        if self.mem_chart is not None:
+            self.mem_chart.destroy()
+            self.mem_chart = None
+        if no_readings(d):
+            box.innerHTML = '<div class="ca-empty">No readings yet: the app takes one a minute.</div>'
+            return
+        box.innerHTML = ""
+        self.mem_chart = map_chart(box, d)
+        if summary:
+            high = (f"Highest: <b>{d['highest']:.1f} GiB</b>. " if d.get("highest") else "Not running in this range. ")
+            summary.innerHTML = (high + f"Admission counts {d['need']:.1f} GiB while it runs and "
+                                 f"{d['need_start']:.1f} GiB while it starts."
+                                 + (f" Readings start {esc(d['since'])}." if d.get("partial") and d.get("since") else ""))
 
     @staticmethod
     def _remove(d: dict) -> str:
@@ -292,6 +328,12 @@ class ServerView:
             own = closest(event.target, '[data-own-act="save"]')
             if own:
                 spawn(self._save_game(), "save map game")
+            return
+        rng = closest(event.target, "[data-range]")
+        if rng:
+            self.mem_range = attr(rng, "data-range")
+            set_pressed(self.el, self.mem_range)
+            spawn(self._memory(), "map memory range")
             return
         btn = closest(event.target, "[data-act]")
         if not btn or btn.disabled:

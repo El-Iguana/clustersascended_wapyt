@@ -57,6 +57,12 @@ class ServerApi:
 
         return {"ok": True, "cancelled": supervisor.cancel_queue()}
 
+    def memory_history(self, server_id: str, range_key: str = "24h") -> dict:
+        from engine import history
+
+        data = history.for_server(str(server_id), str(range_key))
+        return {"ok": True, **data} if data else {"ok": False, "error": "Unknown server."}
+
     def detail(self, server_id: str) -> dict:
         from engine import views
 

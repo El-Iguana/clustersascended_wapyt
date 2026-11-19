@@ -69,6 +69,16 @@ def tick(list_containers: bool = True, now: float | None = None) -> None:
     _watchdog(now)
     _steam_check(now)
     _schedules(now)
+    _history(now)
+
+
+def _history(now: float) -> None:
+    from engine import history
+
+    try:
+        history.maybe_record(now)
+    except Exception as exc:  # noqa: BLE001 - the charts must not stop the poller
+        print(f"[clusters-ascended] memory history: {exc!r}", flush=True)
 
 
 def _schedules(now: float) -> None:
