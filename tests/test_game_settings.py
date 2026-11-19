@@ -29,8 +29,13 @@ def test_catalogue_is_consistent():
 
 def test_wild_level():
     assert ark_settings.wild_level({"OverrideOfficialDifficulty": 5.0}) == 150
-    assert ark_settings.wild_level({"OverrideOfficialDifficulty": 4.0, "DifficultyOffset": 0.2}) == 36
-    assert ark_settings.wild_level({}) is None
+    assert ark_settings.wild_level({"OverrideOfficialDifficulty": 6.0}) == 180
+    # The override is the difficulty: the offset no longer matters.
+    assert ark_settings.wild_level({"OverrideOfficialDifficulty": 4.0, "DifficultyOffset": 0.2}) == 120
+    # Without it, the offset scales the map's difficulty of 4.
+    assert ark_settings.wild_level({}) == 120
+    assert ark_settings.wild_level({"DifficultyOffset": 0.2}) == 36
+    assert ark_settings.wild_level({"DifficultyOffset": 0.0}) == 15
 
 
 def test_ini_matching_is_case_insensitive_and_keeps_everything_else():

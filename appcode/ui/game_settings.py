@@ -137,7 +137,7 @@ class GameSettingsTab:
             return
         n = len(differs(values))
         level = wild_level(values)
-        wild = f" · wild creatures up to about level {level}" if level else " · wild levels: the map's own"
+        wild = f" · wild creatures up to level {level}"
         saved = " · <b>not saved yet</b>" if self.dirty else ""
         el.innerHTML = (f"{n} setting{'s' if n != 1 else ''} differ from Official{wild}{saved}")
 

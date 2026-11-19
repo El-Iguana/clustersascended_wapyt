@@ -71,6 +71,20 @@ def test_remove_is_refused_while_running_or_on_a_compose_container(cluster_env):
     assert store.server("lc") is not None
 
 
+def test_retiring_the_old_compose_container_leaves_the_running_map_alone(cluster_env, tmp_path):
+    from engine import state, supervisor
+
+    adopt("gen")
+    assert wait_job(supervisor.enqueue("start", "gen")["job"]["id"])["state"] == "done"
+    j = wait_job(supervisor.enqueue("retire_old", "gen")["job"]["id"])
+    assert j["state"] == "done", log_of(j["id"])
+    containers = podman_state(tmp_path)["containers"]
+    assert "asa-gen.compose-old" not in containers and containers["asa-gen"]["state"] == "running"
+    assert state.phase("gen") == "ready"
+    assert "no old compose container" in wait_job(supervisor.enqueue("retire_old", "gen")["job"]["id"])["summary"]
+    assert "no old compose container" in wait_job(supervisor.enqueue("retire_old", "lc")["job"]["id"])["summary"]
+
+
 def test_the_last_map_out_lets_the_cluster_be_deleted(cluster_env, monkeypatch):
     from engine import addmap, clusters, store
 
