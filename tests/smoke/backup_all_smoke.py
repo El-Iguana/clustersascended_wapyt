@@ -1,5 +1,6 @@
 """Back up every map of the cluster now (REAL backups; nothing is stopped)."""
 import sys
+import os
 from playwright.sync_api import sync_playwright
 URL = "https://192.168.1.97:8099"; SHOTS = sys.argv[1]
 errors = []
@@ -7,7 +8,7 @@ with sync_playwright() as p:
     b = p.chromium.launch(); ctx = b.new_context(ignore_https_errors=True, viewport={"width": 1400, "height": 1300}); page = ctx.new_page()
     page.on("pageerror", lambda e: errors.append(str(e)))
     page.goto(f"{URL}/clusters_ascended/login"); page.fill('input[name="email"]', "admin")
-    page.fill('input[name="password"]', "changeme"); page.keyboard.press("Enter")
+    page.fill('input[name="password"]', os.environ["CA_PASSWORD"]); page.keyboard.press("Enter")
     page.wait_for_selector("#ca-dash .ca-server", timeout=120_000)
     page.evaluate("location.hash = '#/cluster/oldmangan/backups'")
     page.wait_for_selector('#ca-backups [data-act="backup-all"]', timeout=60_000)
