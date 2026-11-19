@@ -113,6 +113,30 @@ def _desire(server_id: str, desired: str) -> None:
 
 # -- containers ---------------------------------------------------------------
 
+def container_errors(server_id: str, keep: int = 3) -> list[str]:
+    """
+    The last distinct error lines of a map's container output (the k8s-file log
+    in data/logs, which outlives the container), so a failed start says why.
+    """
+    path = paths.data_dir() / "logs" / f"{server_id}.log"
+    try:
+        with open(path, "rb") as fh:
+            fh.seek(0, os.SEEK_END)
+            fh.seek(max(0, fh.tell() - 64 * 1024))
+            lines = fh.read().decode("utf-8", errors="replace").splitlines()
+    except OSError:
+        return []
+    found: list[str] = []
+    for line in reversed(lines):
+        msg = line.split(" ", 3)[3] if line.count(" ") >= 3 else line     # "<time> <stream> <F|P> <text>"
+        msg = msg.strip()
+        if ("ERROR" in msg or "❌" in msg) and msg not in found:
+            found.append(msg[:200])
+            if len(found) == keep:
+                break
+    return list(reversed(found))
+
+
 def desired_spec(server, cluster, eff, settings, update_pass: bool = False) -> spec.ContainerSpec:
     log_dir = paths.data_dir() / "logs"
     return spec.build(eff, settings, cluster=cluster.id, server=server.id, priority=server.priority,
@@ -341,8 +365,10 @@ def _wait_ready(server, settings, t0: float, flag, log, timeout_s: int, job_id=N
         info = podman.inspect(server.container_name)
         st = (info or {}).get("State") or {}
         if not st.get("Running"):
+            errors = container_errors(server.id)
             raise RuntimeError(f"{server.name} exited while loading (state {st.get('Status', 'gone')}, "
-                               f"exit code {st.get('ExitCode')}).")
+                               f"exit code {st.get('ExitCode')})."
+                               + (" Its last errors: " + " | ".join(errors) if errors else ""))
         lv = state.live(server.id)
         if lv.mem:
             peak = max(peak, lv.mem["total"])
@@ -647,7 +673,9 @@ def add_map(p: dict, log, job: dict | None = None) -> str:
     created = False
     try:
         set_stage(job_id, "preparing", "Making the map's folders")
-        addmap._mkdirs([str(install), str(saved)], owner)
+        # ShooterGame too: the world is mounted at <install>/ShooterGame/Saved, and with an empty install
+        # podman would make ShooterGame itself, owned by root, so the first-boot download can't write there.
+        addmap._mkdirs([str(install), str(install / "ShooterGame"), str(saved)], owner)
         log(f"Folders: {install} and {saved}.")
         if p["source"] != "download":
             total = int(p.get("source_bytes") or 0)

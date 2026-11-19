@@ -101,3 +101,47 @@ def test_a_failed_copy_leaves_nothing_behind(cluster_env, tmp_path):
     assert store.server("theisland") is None
     assert not (tmp_path / "ServerFiles_TheIsland").exists()
     assert not (tmp_path / "Instance_TheIsland").exists()
+
+
+def test_download_makes_shootergame_first_and_a_failed_boot_says_why(cluster_env, tmp_path, monkeypatch):
+    """
+    Live-found 2026-11-19: with an empty install, podman made ShooterGame (the parent of the Saved
+    mount) as root, so POK's first-boot download couldn't write there and the container exited 1.
+    """
+    from engine import addmap, lifecycle, paths, store, supervisor
+
+    made: list[str] = []
+    real = addmap._mkdirs
+    monkeypatch.setattr(addmap, "_mkdirs", lambda ps, owner: (made.extend(ps), real(ps, owner)))
+    log = paths.data_dir() / "logs" / "theisland.log"
+    log.parent.mkdir(parents=True, exist_ok=True)
+    log.write_text("2026-11-19T09:49:38.36-05:00 stdout F [ERROR] Staged installation failed\n"
+                   "2026-11-19T09:49:38.70-05:00 stdout F ❌ Server install/update helper exited with status 1\n"
+                   "2026-11-19T09:49:38.71-05:00 stdout F    Aborting startup\n")
+
+    def boot_fails(server_id, log_fn, **kw):
+        assert kw.get("update_pass")
+        assert Path(store.server(server_id).install_dir, "ShooterGame").is_dir()   # before the first boot
+        raise RuntimeError("The Island exited while loading (state exited, exit code 1). Its last errors: "
+                           + " | ".join(lifecycle.container_errors(server_id)))
+    monkeypatch.setattr(lifecycle, "start", boot_fails)
+
+    r = supervisor.enqueue_add_map("main", values(source="download"))
+    assert r["ok"], r
+    j = wait_job(r["job"]["id"], timeout=60)
+    assert j["state"] == "failed"
+    install = str(tmp_path / "ServerFiles_TheIsland" / "arkserver")
+    assert made[:2] == [install, install + "/ShooterGame"]
+    assert "Staged installation failed | ❌ Server install/update helper exited with status 1" in j["summary"]
+    assert store.server("theisland") is None
+
+
+def test_container_errors_picks_the_last_distinct_error_lines(cluster_env):
+    from engine import lifecycle, paths
+
+    assert lifecycle.container_errors("nobody") == []
+    log = paths.data_dir() / "logs" / "lc.log"
+    log.parent.mkdir(parents=True, exist_ok=True)
+    log.write_text("".join(f"t stdout F {m}\n" for m in
+                           ["[ERROR] a", "fine", "[ERROR] b", "[ERROR] b", "[ERROR] c", "❌ d", "done"]))
+    assert lifecycle.container_errors("lc") == ["[ERROR] b", "[ERROR] c", "❌ d"]
