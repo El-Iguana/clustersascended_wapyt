@@ -193,7 +193,7 @@ class ClustersAscended(MainWindow):
 _CSS = """
 /* --- palettes (ui/themes.py sets <html data-catheme>) ----------------------------------------
    bg: page · bg2: chrome · card/card2: raised surfaces · line: borders · txt/mut: text ·
-   acc: accent · grad: filled buttons and the logo · ink: text on grad · accSoft/accLine/accText:
+   acc: accent · grad: filled buttons · ink: text on grad · accSoft/accLine/accText:
    tinted backgrounds, borders and text. The dark five are Whimsy's, as in ai-stack's dashboard. */
 :root,[data-catheme="harbor"]{
   --bg:#0b0f14;--bg2:#10161d;--card:#141b24;--card2:#1a232e;--line:rgba(180,210,235,.10);
@@ -257,7 +257,7 @@ body{background:var(--bg);color:var(--txt);}
 #maindiv,.wapyt-layout{background:var(--bg) !important;}
 .wapyt-cell{border-color:var(--line) !important;}
 
-/* --- the toolbar: a logo tile for the brand, pill buttons --------------------------------- */
+/* --- the toolbar: the artwork tile for the brand, pill buttons --------------------------------- */
 .wapyt-toolbar{background:var(--bg2) !important;border-bottom:1px solid var(--line) !important;min-height:52px;
   padding:8px 14px;}
 .wapyt-toolbar .wapyt-toolbar-btn{border-radius:999px;color:var(--txt2);}
@@ -267,8 +267,8 @@ body{background:var(--bg);color:var(--txt);}
 .wapyt-toolbar-text{opacity:1;color:var(--mut);font-size:12.5px;}
 .wapyt-toolbar-text[data-ca="brand"]{color:var(--txt);font-size:15px;font-weight:750;letter-spacing:.2px;
   display:inline-flex;align-items:center;gap:10px;overflow:visible;margin-right:10px;}
-.wapyt-toolbar-text[data-ca="brand"]::before{content:"CA";display:inline-flex;align-items:center;justify-content:center;
-  width:30px;height:30px;border-radius:9px;background:var(--grad);color:var(--ink);font:800 12.5px var(--sans);letter-spacing:.5px;}
+.wapyt-toolbar-text[data-ca="brand"]::before{content:"";display:inline-block;flex:none;width:32px;height:32px;
+  border-radius:9px;background:url(/static/artwork.jpg) center/cover;box-shadow:0 0 0 1px var(--line2);}
 
 /* --- the theme picker (behind the toolbar's Theme button) --------------------------------- */
 .ca-themes{position:fixed;top:56px;right:14px;z-index:1000;width:250px;background:var(--card);

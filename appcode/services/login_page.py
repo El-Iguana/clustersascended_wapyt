@@ -17,8 +17,9 @@ logger = logging.getLogger("clusters_ascended.login")
 
 # The app's mark above the form, from its own /static mount (`img-src 'self'`).
 _LOGO = (
-    b'<img src="/static/logo.svg" alt="" width="72" height="72" '
-    b'style="width:72px;height:72px;display:block;margin:0 auto 14px;">'
+    b'<img src="/static/artwork.jpg" alt="" width="160" height="160" '
+    b'style="width:160px;height:160px;display:block;margin:0 auto 14px;border-radius:18px;'
+    b'box-shadow:0 10px 30px rgba(0,0,0,.45);">'
 )
 
 # Dark theme, to match the app the login page leads into. Appended as one

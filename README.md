@@ -1,5 +1,9 @@
 # Clusters Ascended
 
+<p align="center">
+  <img src="docs/images/artwork.jpg" alt="Clusters Ascended" width="360">
+</p>
+
 Run your own **ARK: Survival Ascended** cluster at home without being a
 server administrator. Clusters Ascended is a web app for one machine: you
 define a cluster, add maps to it, and manage everything from sliders,
