@@ -100,6 +100,13 @@ fake `podman` and a fake RCON server. The browser UI is Python too
 (pytincture + wapyt, running in Pyodide). See
 [Development](../../wiki/Development) and `CLAUDE.md`.
 
+## Disclaimer
+
+Clusters Ascended is an independent, open-source server management
+application for ARK: Survival Ascended. It is not affiliated with, endorsed
+by, or sponsored by Studio Wildcard or its affiliates. ARK: Survival
+Ascended and associated trademarks belong to their respective owners.
+
 ## License
 
 MIT.
