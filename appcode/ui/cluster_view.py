@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import js
 
+from wapyt import message
+
 from services.cluster_api import ClusterApi
 from ui.add_map import AddMapView
 from ui.backups_tab import BackupsTab
@@ -34,6 +36,7 @@ class ClusterView:
         self.tab = tab if tab in ("settings", "mods", "backups", "add") else ""
         self.listeners = Listeners()
         self.child = None
+        self.name = ""
 
     def mount(self) -> None:
         tabs = "".join(
@@ -91,7 +94,11 @@ class ClusterView:
             f'<a class="ca-mapcard" href="#/map/{esc(s["id"])}"><b>{esc(s["name"])}</b>'
             f'<span class="ca-sub">priority {s["priority"]} · '
             f'{"its own settings for " + esc(", ".join(k for k in s["overrides"])) if s["overrides"] else "uses the cluster settings"}'
-            f"</span></a>" for s in result["servers"])
+            f"</span></a>" for s in result["servers"]) or '<div class="ca-empty">No maps yet.</div>'
+        self.name = c["name"]
+        delete = ("" if result["servers"] else
+                  '<button class="ca-btn ca-danger" data-act="delete"><span class="mdi mdi-delete-outline"></span> '
+                  "Delete this cluster</button>")
         body = js.document.getElementById("ca-cluster-body")
         if not body:
             return
@@ -121,13 +128,28 @@ class ClusterView:
   <label class="ca-field"><span class="ca-field-label">Memory cap</span><span class="ca-field-input"><input name="memory_cap" value="{esc(cap)}" placeholder="none"><span class="ca-unit">GiB</span></span>
     <span class="ca-help">The most this cluster's running maps may need together.</span></label>
   </details>
-  <div class="ca-actions"><button class="ca-btn ca-primary" data-act="save">Save</button></div>
+  <div class="ca-actions"><button class="ca-btn ca-primary" data-act="save">Save</button>{delete}</div>
 </section>
 </div>"""
 
     def _on_click(self, event) -> None:
         if closest(event.target, '[data-act="save"]'):
             spawn(self.save(), "save cluster")
+        elif closest(event.target, '[data-act="delete"]'):
+            spawn(self.delete(), "delete cluster")
+
+    async def delete(self) -> None:
+        if not await message.confirm(f"Delete {self.name}? It has no maps, and no file is deleted "
+                                     "(only its empty folders).", title="Delete cluster",
+                                     ok_text="Delete", danger=True):
+            return
+        result = await ClusterApi().delete_async(self.cluster_id)
+        if failed(result, "delete the cluster"):
+            return
+        kept = result.get("kept") or []
+        toast(f"Deleted {result['name']}." + (f" Kept {kept[-1]}: it is not empty." if kept else ""),
+              kind="success")
+        js.window.location.hash = "#/"
 
     async def save(self) -> None:
         values = {

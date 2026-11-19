@@ -9,7 +9,7 @@ Conventions from the sibling wapyt apps:
 * DOM misses come back as ``JsNull``, which is falsy but not ``None``.
 
 Routes (URL hash): ``#/`` dashboard, ``#/cluster/<id>``, ``#/map/<id>``,
-``#/jobs[/<id>]``, ``#/host``, ``#/import``.
+``#/jobs[/<id>]``, ``#/host``, ``#/new-cluster``, ``#/import``.
 """
 from __future__ import annotations
 
@@ -31,6 +31,7 @@ from ui.common import APPLICATION, Listeners, by_id, spawn
 from ui.dashboard import DashboardView
 from ui.host import HostView
 from ui.import_view import ImportView
+from ui.new_cluster import NewClusterView
 from ui.jobs import JobsView
 from ui.server_view import ServerView
 
@@ -74,6 +75,7 @@ class ClustersAscended(MainWindow):
                     ToolbarButton("dashboard", "Dashboard", "mdi-view-dashboard-outline", group="nav"),
                     ToolbarButton("jobs", "Jobs", "mdi-format-list-checks", group="nav"),
                     ToolbarButton("host", "Host rules", "mdi-memory", group="nav"),
+                    ToolbarButton("new-cluster", "New cluster", "mdi-plus-box-outline", group="nav"),
                     ToolbarButton("import", "Import", "mdi-import", group="nav"),
                     ToolbarSpacer(),
                     ToolbarText("user", "admin"),
@@ -92,7 +94,7 @@ class ClustersAscended(MainWindow):
         item = payload.get("id")
         if item == "logout":
             spawn(self._logout(), "sign out")
-        elif item in ("dashboard", "jobs", "host", "import"):
+        elif item in ("dashboard", "jobs", "host", "new-cluster", "import"):
             js.window.location.hash = "#/" if item == "dashboard" else f"#/{item}"
 
     async def _logout(self) -> None:
@@ -120,6 +122,8 @@ class ClustersAscended(MainWindow):
             self._view = JobsView(container, job)
         elif page == "host":
             self._view = HostView(container)
+        elif page == "new-cluster":
+            self._view = NewClusterView(container)
         elif page == "import":
             self._view = ImportView(container)
         elif page == "map" and len(parts) > 1:

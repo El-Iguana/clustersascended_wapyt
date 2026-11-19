@@ -13,6 +13,7 @@ import sqlite3
 import tempfile
 import threading
 import time
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Optional
 
@@ -115,6 +116,20 @@ def conn() -> sqlite3.Connection:
     return c
 
 
+@contextmanager
+def transaction():
+    """Everything inside commits together, or not at all."""
+    c = conn()
+    c.execute("BEGIN IMMEDIATE")
+    try:
+        yield c
+    except BaseException:
+        c.execute("ROLLBACK")
+        export_config()
+        raise
+    c.execute("COMMIT")
+
+
 def reset_thread_connection() -> None:
     """Tests switch data dirs between cases."""
     c = getattr(_local, "conn", None)
@@ -154,6 +169,17 @@ def save_cluster(c: Cluster) -> None:
         "INSERT INTO clusters(id, data, created) VALUES(?, ?, ?) "
         "ON CONFLICT(id) DO UPDATE SET data=excluded.data",
         (c.id, json.dumps(c.to_dict()), time.time()))
+    export_config()
+
+
+def delete_cluster(cluster_id: str) -> None:
+    """A cluster with no maps left: its row, schedules and bans."""
+    with transaction() as c:
+        if c.execute("SELECT 1 FROM servers WHERE cluster=?", (cluster_id,)).fetchone():
+            raise ValueError("The cluster still has maps.")
+        for table in ("schedules", "bans"):
+            c.execute(f"DELETE FROM {table} WHERE cluster=?", (cluster_id,))
+        c.execute("DELETE FROM clusters WHERE id=?", (cluster_id,))
     export_config()
 
 

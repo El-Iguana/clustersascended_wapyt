@@ -153,6 +153,16 @@ in `~/asa-cluster`). Full plan: `~/.claude/plans/tender-meandering-panda.md`.
   optional start through the queue. Any failure removes the server row, its container and the
   folders it made.
 
+## Several clusters (2026-11-18)
+
+- **New cluster** (`#/new-cluster`, `ui/new_cluster.py` → `engine/clusters.py`): name → id, ClusterId,
+  `~/asa-clusters/<id>` with `Cluster/` (owned 7777). Starts empty with `game={}`; the wizard adds maps.
+  ClusterId and folders may not overlap another cluster's or any map's files.
+- **Import never changes what is already here** (`importer._reconcile`): the same ClusterId + transfer
+  folder means the same cluster, and only maps not yet known are added. A collision with anything else
+  (cluster name, ClusterId, transfer folder, service id, container, port, Saved folder) refuses the whole
+  import, which is written in one transaction.
+
 ## Layout
 
 ```

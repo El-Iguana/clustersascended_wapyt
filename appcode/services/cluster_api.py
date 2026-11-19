@@ -10,6 +10,31 @@ class ClusterApi:
     def __init__(self, _user: dict = None) -> None:
         self._user = _user or {}
 
+    def new_cluster_info(self) -> dict:
+        from engine import clusters
+
+        return {"ok": True, **clusters.defaults()}
+
+    def create(self, values: dict) -> dict:
+        """A new, empty cluster with its own ClusterId and folders."""
+        from engine import clusters
+        from services.auth import actor
+
+        try:
+            return {"ok": True, **clusters.create(dict(values or {}), actor=actor(self._user))}
+        except clusters.Invalid as exc:
+            return {"ok": False, "error": str(exc)}
+
+    def delete(self, cluster_id: str) -> dict:
+        """Only a cluster with no maps."""
+        from engine import clusters
+        from services.auth import actor
+
+        try:
+            return {"ok": True, **clusters.delete(str(cluster_id), actor=actor(self._user))}
+        except clusters.Invalid as exc:
+            return {"ok": False, "error": str(exc)}
+
     def detail(self, cluster_id: str) -> dict:
         from engine import views
 
