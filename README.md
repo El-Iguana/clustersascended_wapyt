@@ -15,14 +15,16 @@ of memory.
 - **Clusters first.** A cluster is a set of maps that share a ClusterId,
   so survivors, creatures and items travel between them. Its maps share
   game settings, mods and passwords; any map can differ where you want it
-  to. A single map is a one-map cluster.
+  to. A single map is a one-map cluster, and one machine can run several
+  clusters, each with its own maps.
 - **Never runs out of memory.** Every map has a *running need*, measured
   once it is fully up, and a larger *startup need*. A map only starts if
   the host can hold it. Starts run one at a time through a **start queue**:
   each map waits its turn, memory is checked again, the map starts fully
   and is measured, then the next one begins. Starts retry on a crash
   while loading, can be cancelled, and a **memory watchdog** saves and
-  stops a map before the kernel would kill one.
+  stops a map before the kernel would kill one. **Memory history** charts
+  show every map's memory over the last 14 days.
 - **Game settings as sliders.** Difficulty, experience, taming,
   gathering, breeding and raising, stacks, survival, day and night,
   rules and cluster travel, with presets (Official, Casual 3×,
@@ -30,15 +32,19 @@ of memory.
   app writes them into each map's files right before it starts, so ARK
   never overwrites them.
 - **Mods** by CurseForge id, in load order, with names you give them.
-- **Backups and restore.** Nightly backups (keep the newest N; keep any
-  forever), one-click restore, and a daily restart with an in-game
-  countdown.
+- **Backups and schedules.** Nightly backups (keep the newest N; keep any
+  forever), one-click restore, a daily restart with an in-game countdown,
+  and **auto-update** when ARK is patched.
 - **Players and console.** Who is online, kick, cluster-wide bans,
   messages in chat or on screen, join and leave history, the live game
   log and admin commands.
 - **Add a map** wizard: pick a map, it copies the game files (or
   downloads them), picks free ports and joins the cluster's settings.
-- **Updates** one map at a time, with a backup first.
+  Maps can be removed again, with or without their files.
+- **Updates** one map at a time, with a backup first; **Update all** brings
+  the maps that were running back afterwards.
+- **Files** tab: browse a map's world, settings and game files from the
+  browser, and edit config files while it is stopped.
 
 | | |
 |---|---|
