@@ -367,7 +367,8 @@ class DashboardView:
                 "Update every map in this cluster to the latest ASA build?\n\n"
                 "Every running map is saved and stopped at once (forced down if it is slow to quit), "
                 "then each map that is behind is backed up and updated, one at a time. "
-                "Maps are NOT started again afterwards: use Start all when it is done.",
+                "The maps that were running start again afterwards, one at a time.\n\n"
+                "There is no countdown for players: for that, use Auto-update on the Backups & schedules tab.",
                 title="Update all", ok_text="Stop and update", danger=True):
             return
         result = await ServerApi().update_cluster_async(cluster_id)

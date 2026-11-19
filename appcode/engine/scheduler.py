@@ -1,5 +1,5 @@
 """
-Schedules: a cluster's nightly backup and daily restart, checked on every
+Schedules: a cluster's nightly backup, daily restart and auto-update, checked on every
 poller tick. Times are the host's local time; ``days`` are 0 (Monday) to 6.
 
 * backup:  every map of the cluster, one at a time on the io lane; a running
@@ -7,9 +7,12 @@ poller tick. Times are the host's local time; ``days`` are 0 (Monday) to 6.
            its last backup is skipped; the newest ``keep`` scheduled backups stay.
 * restart: every running map, one at a time: in-game countdown (``warn``
            minutes), save, stop, start (through the start queue and admission).
+* update:  only when a map is behind Steam's latest build (as last looked up):
+           one cluster-update job: countdown, save and stop, update each map
+           that is behind, start the ones that were running again.
 
 A run missed by more than an hour (the app was down) is skipped for
-restarts and caught up for backups.
+restarts and updates and caught up for backups.
 """
 from __future__ import annotations
 
@@ -21,7 +24,9 @@ from engine import state, store
 DEFAULTS = {
     "backup": {"at": "04:00", "enabled": True, "params": {"keep": 7}},
     "restart": {"at": "05:00", "enabled": False, "params": {"warn": [15, 5, 1], "message": "Daily restart"}},
+    "update": {"at": "06:00", "enabled": False, "params": {"warn": [15, 5, 1], "message": "Server update"}},
 }
+DISRUPTIVE = ("restart", "update")
 ALL_DAYS = [0, 1, 2, 3, 4, 5, 6]
 LATE_S = 3600
 
@@ -48,7 +53,7 @@ def next_run(at: str, days: list, after: float) -> float:
 
 
 def ensure_defaults(now: float | None = None) -> None:
-    """Every cluster gets its two schedules (nightly backup on, daily restart off)."""
+    """Every cluster gets its schedules (nightly backup on, daily restart and auto-update off)."""
     now = now or time.time()
     for c in store.clusters():
         have = {s["kind"] for s in store.schedules(c.id)}
@@ -66,7 +71,7 @@ def tick(now: float | None = None) -> list:
         if not sch["enabled"] or not sch["next_run"] or now < sch["next_run"]:
             continue
         late = now - sch["next_run"] > LATE_S
-        if late and sch["kind"] == "restart":
+        if late and sch["kind"] in DISRUPTIVE:
             result = "Skipped: the app was not running at the time."
         else:
             result = _run(sch)
@@ -107,4 +112,19 @@ def _run(sch: dict, by: str = "schedule") -> str:
             (queued if r.get("ok") else notes).append(s.name if r.get("ok") else r.get("error"))
         return (f"Restarting {', '.join(queued)} one at a time." if queued else "No map was running.") + \
             (f" {' '.join(notes)}" if notes else "")
+    if sch["kind"] == "update":
+        from engine import steam
+
+        latest, error, at = steam.cached_latest()
+        if latest and not error:
+            behind = [s.name for s in servers if steam.installed_build(s.install_dir) != latest]
+            if not behind:
+                return f"Up to date (build {latest})."
+        r = supervisor.enqueue_update_cluster(sch["cluster"], requested_by=by,
+                                              warn=sch["params"].get("warn") or [15, 5, 1],
+                                              message=sch["params"].get("message") or "Server update")
+        if not r.get("ok"):
+            return r.get("error") or "Could not queue the update."
+        return (f"Updating {', '.join(behind)} to build {latest}." if latest and not error
+                else "Checking Steam and updating any map that is behind.")
     return f"Unknown schedule kind {sch['kind']}."

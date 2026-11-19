@@ -182,6 +182,19 @@ in `~/asa-cluster`). Full plan: `~/.claude/plans/tender-meandering-panda.md`.
 - `retire_old` job (map page button once the app's own container exists): removes `<name>.compose-old`,
   never a running one, touches no file. Rollback to compose is gone after it.
 
+## Auto-update and restart after updates (2026-11-19)
+
+- `update_cluster` now starts the maps that were running again afterwards (one at a time through
+  `start`, so admission and the start gate apply); maps that were stopped stay stopped. Optional
+  `warn`/`message` params count down in game chat on every running map first (`_count_down`, uses
+  `WARN_UNIT`); cancelling during the countdown stops nothing and tells players it's called off.
+- The dashboard's "Update all" passes no countdown (immediate), but does restart.
+- Third schedule kind `update` ("Auto-update", default 06:00, off, warn 15/5/1, "Server update"):
+  uses the poller's cached Steam build; if every map is on it, records "Up to date" and queues
+  nothing; otherwise queues one `update_cluster` with the countdown. If the cache is empty or errored
+  it queues anyway (the job checks Steam itself). Missed by >1 h → skipped, like restarts.
+- The cluster tab is now "Backups & schedules".
+
 ## Memory history (2026-11-19)
 
 - `engine/history.py`: the poller records once a minute into `mem_samples` (migration 7): each running
@@ -253,5 +266,6 @@ three timeouts mark podman degraded).
 3. Live ops: ✅ game settings, named mods, players (kick, cluster bans, messages, history) and
    console, add-map wizard (2026-11-11).
 4. ✅ World backups, restore, nightly backups and daily restarts (2026-11-11); files still to do.
-5. Schedules (restarts with warnings, backups, update checks), ✅ memory history charts (2026-11-19).
+5. ✅ Schedules (restarts with warnings, backups, auto-update with restart afterwards), ✅ memory history
+   charts (2026-11-19).
 

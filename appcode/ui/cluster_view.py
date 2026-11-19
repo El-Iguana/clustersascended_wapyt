@@ -21,7 +21,7 @@ from ui.mods_tab import ModsTab
 GiB = 1024 ** 3
 
 TABS = (("", "Maps & basics", "mdi-map-outline"), ("settings", "Game settings", "mdi-tune"),
-        ("mods", "Mods", "mdi-puzzle-outline"), ("backups", "Backups & restarts", "mdi-backup-restore"))
+        ("mods", "Mods", "mdi-puzzle-outline"), ("backups", "Backups & schedules", "mdi-backup-restore"))
 
 
 def _val(name: str) -> str:

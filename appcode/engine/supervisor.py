@@ -160,8 +160,13 @@ CANCELLABLE = frozenset({"start", "restart", "make_room_start", "update", "warne
                          "update_cluster"})
 
 
-def enqueue_update_cluster(cluster_id: str, requested_by: str = "admin") -> dict:
-    """Stop every running map of the cluster, then update each one that is behind (one job)."""
+def enqueue_update_cluster(cluster_id: str, requested_by: str = "admin", warn: list | None = None,
+                           message: str = "") -> dict:
+    """
+    Stop every running map of the cluster, update each one that is behind,
+    start the ones that were running again (one job). ``warn`` (minutes) counts
+    down in game chat first.
+    """
     cluster = store.cluster(cluster_id)
     if cluster is None:
         return {"ok": False, "error": "Unknown cluster."}
@@ -174,7 +179,8 @@ def enqueue_update_cluster(cluster_id: str, requested_by: str = "admin") -> dict
                 name = store.server(j["server"]).name
                 return {"ok": False, "error": f"{name} has a {j['kind']} job {j['state']}; "
                                               "wait for it or cancel it first."}
-        params = {"cluster": cluster_id, "servers": ids, "name": f"{cluster.name} (update all)"}
+        params = {"cluster": cluster_id, "servers": ids, "name": f"{cluster.name} (update all)",
+                  "warn": list(warn or []), "message": message, "restart": True}
         job_id = store.add_job("lifecycle", "update_cluster", None, params, requested_by)
         store.set_job(job_id, stage="queued")
         store.audit(requested_by, "update cluster", cluster_id, {})

@@ -128,6 +128,33 @@ def test_schedules_run_when_due(cluster_env, tmp_path):
     assert "Skipped" in {s["kind"]: s for s in store.schedules("main")}["restart"]["last_result"]
 
 
+def test_auto_update_only_queues_when_a_map_is_behind(cluster_env, monkeypatch):
+    from engine import scheduler, steam, store, supervisor
+
+    scheduler.ensure_defaults()
+    sched = {s["kind"]: s for s in store.schedules("main")}["update"]
+    assert not sched["enabled"] and sched["params"]["warn"] == [15, 5, 1]
+    queued = []
+    monkeypatch.setattr(supervisor, "enqueue_update_cluster",
+                        lambda c, requested_by="admin", warn=None, message="": queued.append((c, warn, message))
+                        or {"ok": True})
+    monkeypatch.setattr(steam, "cached_latest", lambda: ("200", "", time.time()))
+    monkeypatch.setattr(steam, "installed_build", lambda d: "200")
+    now = time.time()
+    store.set_schedule(sched["id"], enabled=1, next_run=now - 10)
+    scheduler.tick(now)
+    assert queued == []
+    assert {s["kind"]: s for s in store.schedules("main")}["update"]["last_result"] == "Up to date (build 200)."
+    monkeypatch.setattr(steam, "installed_build", lambda d: "100")
+    store.set_schedule(sched["id"], next_run=now - 10)
+    scheduler.tick(now)
+    assert queued == [("main", [15, 5, 1], "Server update")]
+    # Missed by more than an hour (the app was down): skipped, like the daily restart.
+    store.set_schedule(sched["id"], next_run=now - 7200)
+    scheduler.tick(now)
+    assert len(queued) == 1
+
+
 def test_asa_history_files_are_left_out(cluster_env, tmp_path):
     from engine import backups, store, supervisor
 

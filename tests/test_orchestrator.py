@@ -400,8 +400,8 @@ def test_an_unsaved_stop_keeps_the_long_grace(cluster_env):
     assert "DoExit" not in cluster_env["rcons"]["lc"].commands
 
 
-def test_update_cluster_stops_everything_then_updates_each_and_restarts_nothing(cluster_env, monkeypatch):
-    from engine import backups, state, steam, store, supervisor
+def _cluster_update_env(cluster_env, monkeypatch):
+    from engine import backups, lifecycle, steam, supervisor
 
     monkeypatch.setattr(backups, "create", lambda s, c, kind, log, note="", keep=None: {})
     monkeypatch.setattr(steam, "latest_build", lambda force=False: ("200", ""))
@@ -411,8 +411,6 @@ def test_update_cluster_stops_everything_then_updates_each_and_restarts_nothing(
     for sid in ("lc", "ast"):
         wait_job(supervisor.enqueue("adopt", sid)["job"]["id"])
         assert wait_job(supervisor.enqueue("start", sid)["job"]["id"])["state"] == "done"
-
-    from engine import lifecycle
     real_start = lifecycle.start
 
     def start_marking(server_id, log, **kw):     # SteamCMD runs during the update-pass boot
@@ -421,6 +419,11 @@ def test_update_cluster_stops_everything_then_updates_each_and_restarts_nothing(
         return real_start(server_id, log, **kw)
     monkeypatch.setattr(lifecycle, "start", start_marking)
 
+
+def test_update_cluster_stops_everything_updates_each_then_restarts_what_ran(cluster_env, monkeypatch):
+    from engine import state, store, supervisor
+
+    _cluster_update_env(cluster_env, monkeypatch)
     r = supervisor.enqueue_update_cluster("main")
     assert r["ok"], r
     assert not supervisor.enqueue_update_cluster("main")["ok"]     # one at a time
@@ -428,11 +431,32 @@ def test_update_cluster_stops_everything_then_updates_each_and_restarts_nothing(
     assert j["state"] == "done", log_of(j["id"])
     log = log_of(j["id"])
     assert "behind: LC, AST." in log
-    assert "Maps left stopped." in j["summary"]
+    assert "Running again: LC, AST." in j["summary"]
     ops = [(c[0], c[-1]) for c in cluster_env["calls"]() if c[0] in ("start", "stop")]
-    # After the two normal starts: both stopped first, then each update pass start→stop, no restarts.
+    # After the two normal starts: both stopped first, each update pass start→stop, then both back.
     tail = ops[2:]
     assert set(tail[:2]) == {("stop", "asa-lc"), ("stop", "asa-ast")}
-    assert tail[2:] == [("start", "asa-lc"), ("stop", "asa-lc"), ("start", "asa-ast"), ("stop", "asa-ast")]
-    assert store.server("lc").desired == "stopped" and store.server("ast").desired == "stopped"
+    assert tail[2:] == [("start", "asa-lc"), ("stop", "asa-lc"), ("start", "asa-ast"), ("stop", "asa-ast"),
+                        ("start", "asa-lc"), ("start", "asa-ast")]
+    assert store.server("lc").desired == "running" and store.server("ast").desired == "running"
+    assert not any(c.startswith("ServerChat") for c in cluster_env["rcons"]["lc"].commands)   # no countdown
+    state.request_refresh()
+
+
+def test_update_cluster_counts_down_first_and_leaves_stopped_maps_stopped(cluster_env, monkeypatch):
+    from engine import lifecycle, state, store, supervisor
+
+    monkeypatch.setattr(lifecycle, "WARN_UNIT", 0.01)
+    _cluster_update_env(cluster_env, monkeypatch)
+    assert wait_job(supervisor.enqueue("stop", "ast")["job"]["id"], timeout=30)["state"] == "done"
+    r = supervisor.enqueue_update_cluster("main", warn=[5, 1], message="Patch day")
+    j = wait_job(r["job"]["id"], timeout=60)
+    assert j["state"] == "done", log_of(j["id"])
+    chat = [c for c in cluster_env["rcons"]["lc"].commands if c.startswith("ServerChat")]
+    assert chat[:3] == ["ServerChat Patch day in 5 minutes.", "ServerChat Patch day in 1 minute.",
+                        "ServerChat Updating now. The server will be back in a while!"]
+    assert "Running again: LC." in j["summary"]
+    assert store.server("ast").desired == "stopped"
+    ops = [(c[0], c[-1]) for c in cluster_env["calls"]() if c[0] in ("start", "stop")]
+    assert ops[-1] == ("start", "asa-lc") and ("start", "asa-ast") in ops[-4:-1]   # AST: update pass only
     state.request_refresh()
