@@ -79,8 +79,8 @@ class DashboardView:
         if d.get("queue"):
             parts.append(self._queue(d["queue"]))
         if not d.get("clusters"):
-            parts.append('<div class="ca-card ca-empty">No clusters yet. '
-                         '<a href="#/import">Import your existing compose cluster</a> to begin.</div>')
+            parts.append('<div class="ca-card ca-empty">No clusters yet. <a href="#/new-cluster">Create one</a> '
+                         'or <a href="#/import">import an existing compose cluster</a> to begin.</div>')
         colours = {}
         n = 0
         for c in d.get("clusters", []):
@@ -175,6 +175,13 @@ class DashboardView:
         mods = len((c.get("defaults") or {}).get("mod_ids") or [])
         cards = "".join(self._server(s, colours.get(s["id"], "#64748b")) for s in c["servers"])
         behind = " ca-primary" if any((s.get("flags") or {}).get("update_available") for s in c["servers"]) else ""
+        buttons = (f'<button class="ca-btn" data-act="start_cluster" data-cluster="{esc(c["id"])}">'
+                   '<span class="mdi mdi-play-box-multiple-outline"></span> Start all</button> '
+                   f'<button class="ca-btn{behind}" data-act="update_cluster" data-cluster="{esc(c["id"])}">'
+                   '<span class="mdi mdi-update"></span> Update all</button>') if c["servers"] else ""
+        grid = (f'<div class="ca-grid">{cards}</div>' if c["servers"] else
+                f'<div class="ca-card ca-empty">No maps yet. <a href="#/cluster/{esc(c["id"])}/add">'
+                "Add the first map</a>.</div>")
         return f"""
 <section class="ca-cluster">
   <div class="ca-cluster-head">
@@ -183,16 +190,13 @@ class DashboardView:
       <div class="ca-sub">ClusterId <code>{esc(c["cluster_id"])}</code> · transfer folder <code>{esc(c["transfer_dir"])}</code>
         · {mods} shared mods{(' · ' + ', '.join(limits)) if limits else ''}</div>
     </div>
-    <div class="ca-sub"><button class="ca-btn" data-act="start_cluster" data-cluster="{esc(c["id"])}">
-        <span class="mdi mdi-play-box-multiple-outline"></span> Start all</button>
-      <button class="ca-btn{behind}" data-act="update_cluster" data-cluster="{esc(c["id"])}">
-        <span class="mdi mdi-update"></span> Update all</button>
+    <div class="ca-sub">{buttons}
       <a href="#/cluster/{esc(c["id"])}/add"><span class="mdi mdi-map-plus"></span> Add a map</a> ·
       <a href="#/cluster/{esc(c["id"])}/settings"><span class="mdi mdi-tune"></span> Game settings</a>
       · <a href="#/cluster/{esc(c["id"])}/mods"><span class="mdi mdi-puzzle-outline"></span> Mods</a>
       · {len(c["servers"])} maps · committed {gib(c["committed"])}</div>
   </div>
-  <div class="ca-grid">{cards}</div>
+  {grid}
 </section>"""
 
     def _server(self, s: dict, colour: str) -> str:

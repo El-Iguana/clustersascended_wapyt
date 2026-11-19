@@ -73,8 +73,9 @@ On the same machine you are signed in automatically. To reach it from the
 rest of your network, run it as a service behind HTTPS (Caddy): see
 [Installing and running](../../wiki/Installing-and-Running).
 
-Then **Import** an existing podman-compose cluster (POK services sharing a
-ClusterId), or add maps with the wizard.
+Then create a **New cluster** and add maps with the wizard, or **Import** an
+existing podman-compose cluster (POK services sharing a ClusterId). You can
+have several clusters, each with its own maps, ClusterId and folders.
 
 ## Development
 

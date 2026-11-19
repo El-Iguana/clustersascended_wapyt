@@ -72,6 +72,8 @@ def run(job: dict, log) -> str:
                       job=job)
     if kind == "update_cluster":
         return update_cluster(params["cluster"], log, job)
+    if kind == "remove_map":
+        return remove_map(server_id, log, delete_files=bool(params.get("delete_files")))
     if kind == "backup":
         server, cluster, _eff, _settings = _context(server_id)
         if params.get("skip_unchanged") and backups.unchanged_since_last(server):
@@ -676,6 +678,74 @@ def add_map(p: dict, log, job: dict | None = None) -> str:
             store.export_config()
         _remove_dirs([str(install.parent), str(saved.parent)], log)
         raise
+
+
+# -- removing a map ------------------------------------------------------------
+
+def _overlap(a: Path, b: Path) -> bool:
+    return a == b or a in b.parents or b in a.parents
+
+
+def remove_map(server_id: str, log, delete_files: bool = False) -> str:
+    """
+    Take a stopped map out of the app and remove the app's container. Its
+    world, game files and backups stay unless ``delete_files``; even then a
+    folder another map or the cluster's transfer folder uses is never touched.
+    """
+    import shutil
+
+    from engine.models import COMMITTED
+
+    server = store.server(server_id)
+    if server is None:
+        return "That map was already removed."
+    if state.phase(server_id) in COMMITTED:
+        raise Refused(f"{server.name} is running. Stop it first.")
+    cluster = store.cluster(server.cluster)
+    info = podman.inspect(server.container_name)
+    if info is not None:
+        if not is_managed(info):
+            raise Refused(f"{server.container_name} is the compose container, not the app's: adopt the map "
+                          "first, or remove that container yourself.")
+        if (info.get("State") or {}).get("Running"):
+            raise Refused(f"{server.name} is running. Stop it first.")
+        podman.remove(server.container_name)
+        log(f"Removed the container {server.container_name}.")
+    if podman.inspect(server.container_name + OLD_SUFFIX) is not None:
+        log(f"Kept {server.container_name + OLD_SUFFIX} (the old compose container; not the app's).")
+
+    targets, kept = [], []
+    if delete_files:
+        root = Path(cluster.root_dir)
+        others = [s for s in store.servers() if s.id != server.id]
+        for d in (Path(server.saved_dir), Path(server.install_dir), backups.backup_dir(cluster, server)):
+            user = next((s.name for s in others if _overlap(d, Path(s.install_dir)) or _overlap(d, Path(s.saved_dir))),
+                        None)
+            if user:
+                kept.append(f"{d} (also used by {user})")
+            elif _overlap(d, Path(cluster.transfer_dir)) or d == root or d in root.parents:
+                kept.append(f"{d} (a cluster folder)")
+            else:
+                targets.append(d)
+
+    store.delete_server(server.id)
+    state.forget(server.id)
+    log(f"{server.name} is out of the app (its runs, player history and backup list too).")
+    if targets:
+        log(f"Deleting {', '.join(map(str, targets))}.")
+        _remove_dirs([str(d) for d in targets], log)
+        for d in targets:
+            try:
+                if d.parent != Path(cluster.root_dir):
+                    d.parent.rmdir()         # e.g. Instance_<Map>, if nothing else is in it
+            except OSError:
+                pass
+        shutil.rmtree(paths.data_dir() / "ini-backups" / server.id, ignore_errors=True)
+    for k in kept:
+        log(f"Kept {k}.")
+    if delete_files:
+        return f"{server.name} was removed and its files deleted." + (f" Kept {len(kept)} shared folder(s)." if kept else "")
+    return f"{server.name} was removed. Its world and game files are still in {Path(server.saved_dir).parent}."
 
 
 def _remove_dirs(paths: list[str], log) -> None:

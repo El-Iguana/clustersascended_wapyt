@@ -90,6 +90,8 @@ def suggest(cluster_id: str) -> dict:
     m = [re.match(r"^(.*?)(\d+)$", x) for x in sessions]
     if sessions and all(m) and len({x.group(1) for x in m}) == 1:
         session = f"{m[0].group(1)}{max(int(x.group(2)) for x in m) + 1}"
+    elif not sessions:                             # a new cluster's first map
+        session = re.sub(r'[\r\n\x00"?]', "", c.name)[:63] + "1"
     else:
         session = ""
     sources = []
