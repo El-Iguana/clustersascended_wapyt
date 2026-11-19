@@ -13,7 +13,7 @@ from services.fmt import duration, gib, phase_label
 from services.host_api import HostApi
 from services.jobs_api import JobsApi
 from services.server_api import ServerApi
-from ui.common import MAP_COLOURS, Listeners, attr, closest, esc, failed, spawn, toast
+from ui.common import Listeners, attr, closest, esc, failed, map_colour, spawn, toast
 
 REFRESH_MS = 3000
 
@@ -28,7 +28,6 @@ STAGES = {
 CANCELLABLE = ("start", "restart", "make_room_start", "update", "warned_restart", "add_map", "update_cluster")
 
 # Map colours for the memory bar, by position in the cluster list.
-_COLOURS = MAP_COLOURS
 
 
 class DashboardView:
@@ -85,7 +84,7 @@ class DashboardView:
         n = 0
         for c in d.get("clusters", []):
             for s in c["servers"]:
-                colours[s["id"]] = _COLOURS[n % len(_COLOURS)]
+                colours[s["id"]] = map_colour(n)
                 n += 1
         for c in d.get("clusters", []):
             parts.append(self._cluster(c, colours, d["host"]))
@@ -98,7 +97,7 @@ class DashboardView:
         n = 0
         for c in d.get("clusters", []):
             for s in c["servers"]:
-                colour = _COLOURS[n % len(_COLOURS)]
+                colour = map_colour(n)
                 n += 1
                 if s.get("actual"):
                     pct = 100 * s["actual"] / total
@@ -114,7 +113,7 @@ class DashboardView:
         n = 0
         for c in d.get("clusters", []):
             for s in c["servers"]:
-                colour = _COLOURS[n % len(_COLOURS)]
+                colour = map_colour(n)
                 n += 1
                 if s.get("actual"):
                     legend.append(f'<span><i style="background:{colour}"></i>{esc(s["name"])} '

@@ -21,11 +21,17 @@ APPLICATION = "clusters_ascended"
 # order. wapyt's dark chart palette: checked for colour-blind separation and
 # contrast on the cards' #111827 (the old Tailwind-400 set failed both).
 MAP_COLOURS = ("#3987e5", "#d95926", "#199e70", "#c98500", "#d55181", "#008300", "#9085e9", "#e66767")
+# The same hues' light steps (wapyt's light chart palette), for the Daylight theme.
+MAP_COLOURS_LIGHT = ("#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#4a3aa7", "#e34948")
 OTHER_COLOUR = "#475569"     # everything else on the host (the bar's hatched segment)
 
 
 def map_colour(position: int) -> str:
-    return MAP_COLOURS[position % len(MAP_COLOURS)]
+    """A map's colour, in the light or dark step for the theme on the page now."""
+    from ui.themes import is_dark
+
+    colours = MAP_COLOURS if is_dark() else MAP_COLOURS_LIGHT
+    return colours[position % len(colours)]
 
 
 def spawn(coro, label: str):
