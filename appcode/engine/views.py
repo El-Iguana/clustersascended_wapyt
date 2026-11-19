@@ -479,9 +479,9 @@ def save_schedule(cluster_id: str, kind: str, values: dict) -> None:
         except ValueError:
             raise Invalid("Warnings are minutes, like 15, 5, 1.")
         params["warn"] = warn or [5]
-        message = str(values.get("message") or "Daily restart").strip()[:60]
+        message = str(values.get("message") or scheduler.DEFAULTS[kind]["params"]["message"]).strip()[:60]
         if not re.match(r"^[\w .,!'-]*$", message):
-            raise Invalid("Keep the restart message to letters, digits and simple punctuation.")
+            raise Invalid("Keep the message to letters, digits and simple punctuation.")
         params["message"] = message
     store.save_schedule(cluster_id, kind, at, days, params, bool(values.get("enabled")),
                         scheduler.next_run(at, days, time.time()))

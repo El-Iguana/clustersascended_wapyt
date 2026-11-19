@@ -71,7 +71,8 @@ def run(job: dict, log) -> str:
         return update(server_id, log, force=bool(params.get("force")), make_room=bool(params.get("make_room")),
                       job=job)
     if kind == "update_cluster":
-        return update_cluster(params["cluster"], log, job)
+        return update_cluster(params["cluster"], log, job, warn=params.get("warn") or [],
+                              message=params.get("message") or "", restart=params.get("restart", True))
     if kind == "retire_old":
         return retire_old(server_id, log)
     if kind == "remove_map":
@@ -829,11 +830,13 @@ def update(server_id: str, log, force: bool = False, make_room: bool = False, jo
     return f"{server.name} updated to build {latest or after}."
 
 
-def update_cluster(cluster_id: str, log, job: dict | None = None) -> str:
+def update_cluster(cluster_id: str, log, job: dict | None = None, warn: list | None = None,
+                   message: str = "", restart: bool = True) -> str:
     """
-    Update a whole cluster: save and stop every running map at once (forced
-    if it is slow), then update each map that is behind, one at a time. Maps
-    are left stopped afterwards.
+    Update a whole cluster: count down in game chat if ``warn`` is given,
+    save and stop every running map at once (forced if it is slow), update
+    each map that is behind, one at a time, then (``restart``) start the maps
+    that were running again, one at a time through admission.
     """
     import threading
 
@@ -853,6 +856,8 @@ def update_cluster(cluster_id: str, log, job: dict | None = None) -> str:
 
     running = [s for s in servers
                if ((podman.inspect(s.container_name) or {}).get("State") or {}).get("Running")]
+    if running and warn:
+        _count_down(running, warn, message or "Server update", log, job_id)
     if running:
         set_stage(job_id, "stopping", f"Saving and stopping {', '.join(s.name for s in running)}")
         log(f"Saving and stopping {', '.join(s.name for s in running)}.")
@@ -887,7 +892,58 @@ def update_cluster(cluster_id: str, log, job: dict | None = None) -> str:
         except Exception as exc:  # noqa: BLE001 - carry on with the next map
             log(f"Updating {s.name} failed: {exc}")
             failed.append(f"{s.name}: {exc}")
-    summary = " ".join(done) + (" Failed: " + "; ".join(failed) if failed else "") + " Maps left stopped."
+    back, not_back = [], []
+    if restart and running:
+        for i, s in enumerate(running, start=1):
+            if cancel_requested(job_id):
+                not_back.extend(r.name for r in running[i - 1:])
+                log("Cancelled: the remaining maps stay stopped.")
+                break
+            _flag(s.id).clear()
+            _desire(s.id, "running")
+            set_stage(job_id, "starting", f"Starting {s.name} again ({i} of {len(running)})")
+            log(f"--- Starting {s.name} again ({i} of {len(running)}) ---")
+            try:
+                start(s.id, log, job=job)
+                back.append(s.name)
+            except Exception as exc:  # noqa: BLE001 - carry on with the next map
+                log(f"Starting {s.name} again failed: {exc}")
+                not_back.append(s.name)
+    summary = " ".join(done) + (" Failed: " + "; ".join(failed) if failed else "")
+    if not running:
+        summary += " No map was running, so none was started."
+    elif not restart:
+        summary += " Maps left stopped."
+    else:
+        summary += (f" Running again: {', '.join(back)}." if back else "") + \
+                   (f" Not started again: {', '.join(not_back)}." if not_back else "")
     if failed and not done:
         raise RuntimeError(summary.strip())
     return summary.strip()
+
+
+def _count_down(servers: list, warn: list, message: str, log, job_id) -> None:
+    """Warn every running map's players at each mark (minutes), all maps at once."""
+    marks = sorted({int(m) for m in warn if int(m) > 0}, reverse=True)
+
+    def say(text: str) -> None:
+        for s in servers:
+            _s, _c, eff, _st = _context(s.id)
+            try:
+                rcon.command(s.rcon_port, eff.get("admin_password") or "", f"ServerChat {text}", timeout=10)
+            except rcon.RconError as exc:
+                log(f"Could not warn {s.name}'s players ({exc}).")
+
+    for i, minutes in enumerate(marks):
+        text = f"{message} in {minutes} minute{'s' if minutes != 1 else ''}."
+        say(text)
+        log(f"Warned players: {text}")
+        set_stage(job_id, "warning", f"Update in {minutes} min", None)
+        following = marks[i + 1] if i + 1 < len(marks) else 0
+        end = time.time() + (minutes - following) * 60 * WARN_UNIT
+        while time.time() < end:
+            if cancel_requested(job_id):
+                say("The update was called off.")
+                raise Aborted("Cluster update cancelled during the countdown; nothing was stopped.")
+            time.sleep(min(POLL_S, max(0.0, end - time.time())))
+    say("Updating now. The server will be back in a while!")

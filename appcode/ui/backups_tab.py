@@ -1,6 +1,6 @@
 """
 A cluster's backups and schedules (``#/cluster/<id>/backups``): the nightly
-backup and daily restart, and every map's backups with Restore, Keep and
+backup, daily restart and auto-update, and every map's backups with Restore, Keep and
 Delete.
 """
 from __future__ import annotations
@@ -95,6 +95,17 @@ class BackupsTab:
                 f'<label class="ca-sched-row">Warn players <input data-sched="restart" name="warn" value="{esc(warn)}"> '
                 f'minutes before</label><label class="ca-sched-row">Message <input data-sched="restart" name="message" '
                 f'value="{esc(r["params"].get("message", "Daily restart"))}"></label>'))
+        u = scheds.get("update")
+        if u:
+            warn = ", ".join(str(w) for w in u["params"].get("warn") or [15, 5, 1])
+            cards.append(_schedule_card(
+                u, "Auto-update", "mdi-update",
+                "When Steam has a newer ARK build, players see a countdown in chat, every running map is saved "
+                "and stopped, each map is backed up and updated one at a time, and the maps that were running "
+                "start again. When every map is up to date, nothing happens.",
+                f'<label class="ca-sched-row">Warn players <input data-sched="update" name="warn" value="{esc(warn)}"> '
+                f'minutes before</label><label class="ca-sched-row">Message <input data-sched="update" name="message" '
+                f'value="{esc(u["params"].get("message", "Server update"))}"></label>'))
         disk = result.get("disk") or {}
         free = f' · {size(disk["free"])} free on the disk' if disk else ""
         root.innerHTML = f"""
@@ -192,8 +203,10 @@ class BackupsTab:
             await self.load()
 
     async def _run_schedule(self, schedule_id: int, kind: str) -> None:
-        text = ("Back up every map now?" if kind == "backup" else
-                "Restart every running map now, with the countdown in chat?")
+        text = {"backup": "Back up every map now?",
+                "restart": "Restart every running map now, with the countdown in chat?",
+                "update": "Check for an ARK update now? If a map is behind, players get the countdown in chat, "
+                          "then the maps are updated and the ones that were running start again."}.get(kind, "Run now?")
         if not await message.confirm(text, title="Run now", ok_text="Run now"):
             return
         result = await BackupsApi().run_now_async(schedule_id)

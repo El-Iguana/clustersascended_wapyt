@@ -70,7 +70,7 @@ def test_two_clusters_keep_their_own_maps(imported):
     a, b = effective(store.server("a1"), store.cluster("alpha")), effective(store.server("b1"), store.cluster("beta"))
     assert (a["cluster_id"], b["cluster_id"]) == ("alphacluster", "betacluster")
     assert a["transfer_dir"] != b["transfer_dir"]
-    assert {s["kind"] for s in store.schedules("beta")} == {"backup", "restart"}
+    assert {s["kind"] for s in store.schedules("beta")} == {"backup", "restart", "update"}
 
 
 @pytest.mark.parametrize("rows, name, expected", [
@@ -160,7 +160,7 @@ def test_create_a_cluster_and_plan_its_first_map(imported, no_podman, monkeypatc
     assert c.transfer_dir == str(imported / "new" / "Cluster") and Path(c.transfer_dir).is_dir()
     assert c.defaults["admin_password"] and c.defaults["server_password"] == "join"
     assert c.defaults["mod_ids"] == [] and "-NoBattlEye" not in c.defaults["custom_args"]
-    assert {s["kind"] for s in store.schedules(c.id)} == {"backup", "restart"}
+    assert {s["kind"] for s in store.schedules(c.id)} == {"backup", "restart", "update"}
     assert views.cluster_detail(c.id)["servers"] == []
     assert views.backups_detail(c.id)
 
