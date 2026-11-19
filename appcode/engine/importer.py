@@ -99,20 +99,29 @@ def apply(compose_path: str, cluster_name: str = "", actor: str = "admin") -> di
     plan = preview(compose_path, cluster_name)
     if plan.errors or not plan.cluster:
         return {"ok": False, "error": " ".join(plan.errors) or "Nothing to import."}
+    from engine import addmap, supervisor
+
+    why = addmap.must_stop_first()     # checked again under the lock below
+    if why:
+        return {"ok": False, "error": why}
     backup_dir = paths.data_dir() / "import"
     backup_dir.mkdir(parents=True, exist_ok=True)
     copy = backup_dir / f"docker-compose.{time.strftime('%Y%m%d-%H%M%S')}.yaml"
     shutil.copy2(compose_path, copy)
     os.chmod(copy, 0o600)
 
-    try:
-        with store.transaction():          # all of it or none of it
-            if store.cluster(plan.cluster.id) is None:
-                store.save_cluster(plan.cluster)
-            for s in plan.servers:
-                store.save_server(s)
-    except sqlite3.IntegrityError as exc:
-        return {"ok": False, "error": f"Nothing was imported: {exc}"}
+    with supervisor._enqueue_lock:     # every map stopped, and none starts while this lands
+        why = addmap.must_stop_first()
+        if why:
+            return {"ok": False, "error": why}
+        try:
+            with store.transaction():          # all of it or none of it
+                if store.cluster(plan.cluster.id) is None:
+                    store.save_cluster(plan.cluster)
+                for s in plan.servers:
+                    store.save_server(s)
+        except sqlite3.IntegrityError as exc:
+            return {"ok": False, "error": f"Nothing was imported: {exc}"}
     seeded = {}
     for s in plan.servers:
         readings = logtail.ready_reading_history(Path(s.saved_dir) / "Logs")

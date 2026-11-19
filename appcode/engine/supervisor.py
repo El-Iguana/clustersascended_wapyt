@@ -194,11 +194,9 @@ def enqueue_add_map(cluster_id: str, values: dict, requested_by: str = "admin") 
     from engine import addmap
 
     with _enqueue_lock:
-        busy = addmap.busy_maps()
-        if busy:
-            return {"ok": False, "error": f"Stop every map first (still running or busy: {', '.join(busy)})."}
-        if any(j["kind"] == "add_map" for j in store.jobs(limit=50, states=ACTIVE)):
-            return {"ok": False, "error": "A map is already being added."}
+        why = addmap.must_stop_first()
+        if why:
+            return {"ok": False, "error": why}
         try:
             plan = addmap.plan(cluster_id, values)
         except addmap.Invalid as exc:

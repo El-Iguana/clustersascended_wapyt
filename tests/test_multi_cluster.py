@@ -245,3 +245,25 @@ def test_a_failed_folder_leaves_no_cluster(imported, monkeypatch):
     with pytest.raises(clusters.Invalid, match="podman says no"):
         clusters.create(new(imported))
     assert list(layout()) == ["alpha"] and not (imported / "new").exists()
+
+
+# -- every map stopped first ----------------------------------------------------
+
+def test_adding_a_cluster_or_importing_needs_every_map_stopped(imported, no_podman, monkeypatch):
+    """Like adding a map: a running (or busy) map anywhere blocks a new cluster and an import."""
+    from engine import addmap, clusters, importer, paths
+
+    copies = lambda: len(list((paths.data_dir() / "import").glob("*")))   # noqa: E731
+    before = copies()
+    monkeypatch.setattr(addmap, "busy_maps", lambda: ["A1"])
+    with pytest.raises(clusters.Invalid, match="Stop every map first .*A1"):
+        clusters.create(new(imported))
+    r = importer.apply(compose(imported, "b", "betacluster", [("asa-b1", CENTER, 41100, 42100)]))
+    assert not r["ok"] and "Stop every map first" in r["error"]
+    assert list(layout()) == ["alpha"]
+    assert copies() == before          # a refused import leaves no copy of the compose file
+
+    monkeypatch.setattr(addmap, "busy_maps", lambda: [])
+    assert clusters.create(new(imported))["cluster"] == "friends-pve"
+    assert importer.apply(compose(imported, "b", "betacluster", [("asa-b1", CENTER, 41100, 42100)]))["ok"]
+    assert sorted(layout()) == ["alpha", "beta", "friends-pve"]

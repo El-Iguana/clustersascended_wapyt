@@ -6,11 +6,12 @@ from __future__ import annotations
 
 import js
 
-from wapyt import message
-
 from services.ark_maps import MAPS
 from services.cluster_api import ClusterApi
 from ui.common import Listeners, attr, closest, esc, failed, spawn, toast
+from ui.stop_first import banner, stop_all
+
+READY = "Every map is stopped: ready to add one."
 
 GiB = 1024 ** 3
 
@@ -44,23 +45,13 @@ class AddMapView:
         self._check()
 
     async def _refresh_busy(self) -> None:
-        result = await ClusterApi().add_map_info_async(self.cluster_id)
+        result = await ClusterApi().stop_first_async()
         if result.get("ok"):
-            self.info["busy"] = result["busy"]
+            self.info["why"] = result["why"]
             box = js.document.getElementById("ca-add-busy")
             if box:
-                box.innerHTML = self._busy(result["busy"])
+                box.innerHTML = banner(result, READY)
             self._check()
-
-    @staticmethod
-    def _busy(busy: list) -> str:
-        if not busy:
-            return ('<div class="ca-fits"><span class="mdi mdi-check-circle"></span> Every map is stopped: '
-                    "ready to add one.</div>")
-        return (f'<div class="ca-refusal"><span class="mdi mdi-stop-circle-outline"></span> Every map must be '
-                f'stopped first. Still running or busy: <b>{esc(", ".join(busy))}</b>.'
-                f'<div class="ca-actions"><button class="ca-btn ca-danger" data-act="stop-all">'
-                f'Save and stop every map</button></div></div>')
 
     def _render(self, d: dict) -> str:
         taken = set(d["taken_maps"])
@@ -77,7 +68,7 @@ class AddMapView:
                     f'{" checked" if not d["sources"] else ""}> Download a fresh copy with SteamCMD '
                     '(about 13 GiB; slower)</label>')
         return f"""
-<section class="ca-card" id="ca-add-busy">{self._busy(d["busy"])}</section>
+<section class="ca-card" id="ca-add-busy">{banner(d, READY)}</section>
 <section class="ca-card"><h2>1. Pick a map</h2>
   <div class="ca-mapchoices">{cards}</div>
   <label class="ca-field"><span class="ca-field-label">Or a mod map</span><span class="ca-field-input">
@@ -120,7 +111,7 @@ class AddMapView:
         btn = js.document.querySelector('#ca-add [data-act="create"]')
         why = js.document.getElementById("ca-add-why")
         reason = ""
-        if self.info.get("busy"):
+        if self.info.get("why"):
             reason = "Stop every map first."
         elif not self._map_name():
             reason = "Pick a map."
@@ -154,18 +145,9 @@ class AddMapView:
             return
         act = attr(btn, "data-act")
         if act == "stop-all":
-            spawn(self._stop_all(), "stop all")
+            spawn(stop_all(), "stop all")
         elif act == "create":
             spawn(self._create(), "add map")
-
-    async def _stop_all(self) -> None:
-        if not await message.confirm("Save the world on every running map and stop them all?\n\n"
-                                     "Players on them are disconnected.", title="Stop every map",
-                                     ok_text="Save and stop all", danger=True):
-            return
-        result = await ClusterApi().stop_all_async()
-        if not failed(result, "stop the maps"):
-            toast(f"Stopping {', '.join(result['queued']) or 'nothing'}…", kind="success")
 
     async def _create(self) -> None:
         source = js.document.querySelector('#ca-add input[name="source"]:checked')
