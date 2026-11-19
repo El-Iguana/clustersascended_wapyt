@@ -13,7 +13,7 @@ from services.fmt import duration, gib, phase_label
 from services.host_api import HostApi
 from services.jobs_api import JobsApi
 from services.server_api import ServerApi
-from ui.common import Listeners, attr, closest, esc, failed, spawn, toast
+from ui.common import MAP_COLOURS, Listeners, attr, closest, esc, failed, spawn, toast
 
 REFRESH_MS = 3000
 
@@ -28,7 +28,7 @@ STAGES = {
 CANCELLABLE = ("start", "restart", "make_room_start", "update", "warned_restart", "add_map", "update_cluster")
 
 # Map colours for the memory bar, by position in the cluster list.
-_COLOURS = ("#38bdf8", "#a78bfa", "#34d399", "#f472b6", "#fbbf24", "#60a5fa", "#fb923c", "#2dd4bf")
+_COLOURS = MAP_COLOURS
 
 
 class DashboardView:
@@ -135,6 +135,7 @@ class DashboardView:
   </div>
   <div class="ca-legend">{''.join(legend)}</div>
   <div class="ca-sub">Budget = RAM + {gib(h["swap_allowance"])} swap allowance − {gib(h["reserve"])} reserve.
+    <a href="#/memory"><span class="mdi mdi-chart-areaspline"></span> Memory history</a> ·
     <a href="#/host">Change the rules</a></div>
 </section>"""
 

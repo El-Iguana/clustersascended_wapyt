@@ -167,6 +167,20 @@ in `~/asa-cluster`). Full plan: `~/.claude/plans/tender-meandering-panda.md`.
   backup list); files stay unless `delete_files`, and even then a folder another map or the transfer
   folder uses is kept. **Delete cluster** only when it has no maps; it removes empty folders only.
 
+## Memory history (2026-11-19)
+
+- `engine/history.py`: the poller records once a minute into `mem_samples` (migration 7): each running
+  map's total (anon + swap, the dashboard's figure), `_other` (host used − maps) and `_host`. 14 days
+  kept, pruned hourly; removing a map drops its readings.
+- Charts show the **highest** reading per slice (6 h: 2 min, 24 h: 5 min, 7 d: 30 min, 14 d: 1 h). A
+  slice with no `_host` reading is a gap (app down); a map missing from a covered slice is 0.
+- `#/memory` (linked from the dashboard's memory card): maps stacked + "Everything else", RAM and
+  budget lines. Each map page's Overview: its own line + its running need. wapyt `Chart` (Chart.js),
+  container needs `data-wapyt-theme="dark"`.
+- One colour per map everywhere: `ui/common.MAP_COLOURS` (wapyt's dark palette, validated for CVD and
+  contrast on #111827) in the dashboard's order (clusters, then maps); `history` sends each map's
+  position as `colour`.
+
 ## Layout
 
 ```
@@ -208,6 +222,7 @@ State: `data/` (git-ignored): `clusters.db`, `config-export.json`, `jobs/<id>.lo
 ## Host facts (2026-11-11)
 
 31 GiB RAM, 34 GiB swap (`/swapfile2` 32 GiB + 2 GiB), swappiness 60, cgroup v2.
+**RAM is 62.6 GiB as of 2026-11-19** (MemTotal 65613136 kB); the readings below predate that.
 Readiness readings from old logs: Lost Colony 16.91 GB, Astraeos 18.99 GB, Genesis 1
 10.35 GB. Podman 4.9.3; Podman Desktop can wedge `podman ps` (every call has a timeout,
 three timeouts mark podman degraded).
@@ -223,5 +238,5 @@ three timeouts mark podman degraded).
 3. Live ops: ✅ game settings, named mods, players (kick, cluster bans, messages, history) and
    console, add-map wizard (2026-11-11).
 4. ✅ World backups, restore, nightly backups and daily restarts (2026-11-11); files still to do.
-5. Schedules (restarts with warnings, backups, update checks), memory history charts.
+5. Schedules (restarts with warnings, backups, update checks), ✅ memory history charts (2026-11-19).
 

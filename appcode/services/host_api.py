@@ -16,6 +16,12 @@ class HostApi:
     def __init__(self, _user: dict = None) -> None:
         self._user = _user or {}
 
+    def memory_history(self, range_key: str = "24h") -> dict:
+        """Every map's memory over time, stacked, with the host's RAM and budget."""
+        from engine import history
+
+        return {"ok": True, **history.overview(str(range_key))}
+
     def overview(self) -> dict:
         """Host memory, every cluster with its maps, previews, and active jobs."""
         from engine import admission, podman, state, store, supervisor, views

@@ -89,6 +89,11 @@ MIGRATIONS = [
         banned_at REAL NOT NULL, banned_by TEXT NOT NULL DEFAULT '', applied TEXT NOT NULL DEFAULT '[]',
         PRIMARY KEY(cluster, eos_id));
     """,
+    # 7: memory over time (engine/history.py): a reading a minute per running map, plus the host
+    """
+    CREATE TABLE mem_samples (ts INTEGER NOT NULL, server TEXT NOT NULL, total INTEGER NOT NULL);
+    CREATE INDEX mem_samples_ts ON mem_samples(ts, server);
+    """,
 ]
 
 
@@ -186,7 +191,7 @@ def delete_cluster(cluster_id: str) -> None:
 def delete_server(server_id: str) -> None:
     """A map and its history (jobs and the audit log keep their rows)."""
     with transaction() as c:
-        for table in ("server_runs", "player_sessions", "backups"):
+        for table in ("server_runs", "player_sessions", "backups", "mem_samples"):
             c.execute(f"DELETE FROM {table} WHERE server=?", (server_id,))
         c.execute("DELETE FROM servers WHERE id=?", (server_id,))
     export_config()
@@ -383,6 +388,30 @@ def save_schedule(cluster_id: str, kind: str, at: str, days: list, params: dict,
 def set_schedule(schedule_id: int, **fields) -> None:
     cols = ", ".join(f"{k}=?" for k in fields)
     conn().execute(f"UPDATE schedules SET {cols} WHERE id=?", (*fields.values(), schedule_id))
+
+
+def add_mem_samples(ts: int, rows: list) -> None:
+    conn().executemany("INSERT INTO mem_samples(ts, server, total) VALUES(?, ?, ?)",
+                       [(int(ts), sid, int(total)) for sid, total in rows])
+
+
+def prune_mem_samples(before: float) -> None:
+    conn().execute("DELETE FROM mem_samples WHERE ts<?", (int(before),))
+
+
+def mem_sample_buckets(since: int, step: int, servers: Optional[list] = None) -> list[tuple]:
+    """``(bucket start, server, highest total in it)`` from ``since`` on."""
+    sql = "SELECT (ts / ?) * ? AS b, server, MAX(total) FROM mem_samples WHERE ts>=?"
+    args: list = [int(step), int(step), int(since)]
+    if servers:
+        sql += f" AND server IN ({','.join('?' * len(servers))})"
+        args += list(servers)
+    return [tuple(r) for r in conn().execute(sql + " GROUP BY b, server", args).fetchall()]
+
+
+def first_mem_sample() -> Optional[int]:
+    row = conn().execute("SELECT MIN(ts) FROM mem_samples").fetchone()
+    return row[0] if row else None
 
 
 def recent_runs(server_id: str, since: float) -> list[dict]:

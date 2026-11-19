@@ -17,6 +17,16 @@ from wapyt import message
 
 APPLICATION = "clusters_ascended"
 
+# One colour per map, everywhere (dashboard bar and charts), in the dashboard's
+# order. wapyt's dark chart palette: checked for colour-blind separation and
+# contrast on the cards' #111827 (the old Tailwind-400 set failed both).
+MAP_COLOURS = ("#3987e5", "#d95926", "#199e70", "#c98500", "#d55181", "#008300", "#9085e9", "#e66767")
+OTHER_COLOUR = "#475569"     # everything else on the host (the bar's hatched segment)
+
+
+def map_colour(position: int) -> str:
+    return MAP_COLOURS[position % len(MAP_COLOURS)]
+
 
 def spawn(coro, label: str):
     """Run a coroutine detached, but never silently."""
