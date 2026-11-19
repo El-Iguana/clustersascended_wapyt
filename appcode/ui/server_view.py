@@ -137,7 +137,7 @@ class ServerView:
         return f"""<section class="ca-card" id="ca-map-status">{self._status(d)}</section>
 <section class="ca-card"><div class="ca-host-head"><h2>Memory</h2>{ranges_html(self.mem_range)}</div>
   <div class="ca-sub" id="ca-map-mem-sum"></div>
-  <div class="ca-chart" id="ca-map-mem" data-wapyt-theme="dark"></div></section>
+  <div class="ca-chart" id="ca-map-mem"></div></section>
 {self._runs(d)}{self._remove(d)}"""
 
     async def _memory(self) -> None:

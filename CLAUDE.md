@@ -182,6 +182,20 @@ in `~/asa-cluster`). Full plan: `~/.claude/plans/tender-meandering-panda.md`.
 - `retire_old` job (map page button once the app's own container exists): removes `<name>.compose-old`,
   never a running one, touches no file. Rollback to compose is gone after it.
 
+## Themes (2026-11-19, like ai-stack's stack-ui #18)
+
+- `ui/themes.py`: Whimsy's five dark colourways (Bone, Ember, Moss, Dusk, Harbor) + Daylight, set as
+  `<html data-catheme>`, plus wapyt's dark/light via `set_theme`. Per browser (localStorage
+  `clustersascended.theme`, guarded); nothing stored → OS (dark → Harbor, light → Daylight).
+- Picker: the toolbar's **Theme** button opens `#ca-themes` (appended to body); Escape / outside click
+  closes it. Picking a swatch re-routes, so charts and map colours redraw.
+- Every colour in `_CSS` is a variable from the palette; wapyt's tokens (`--wapyt-*` and their
+  -light/-dark values) point at the same variables. Don't add literal colours to the CSS.
+- Map colours have a light step (`MAP_COLOURS_LIGHT`, wapyt's light chart palette); `map_colour()` and
+  the chart reference lines ask `themes.is_dark()`. Chart containers carry no `data-wapyt-theme`.
+- The brand is the first ToolbarText, tagged `data-ca="brand"` for its logo tile. The login page
+  (services/login_page.py) is server-rendered and stays dark.
+
 ## Adding needs every map stopped (2026-11-19)
 
 - Adding a map, creating a cluster and importing a compose file all need every map on the host (all

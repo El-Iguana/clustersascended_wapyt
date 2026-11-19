@@ -26,7 +26,7 @@ class MemoryView:
   <section class="ca-card">
     <div class="ca-host-head"><h2>Memory over time</h2>{ranges_html(self.range)}</div>
     <div class="ca-sub" id="ca-memory-sum"></div>
-    <div class="ca-chart" id="ca-memory-chart" data-wapyt-theme="dark"></div>
+    <div class="ca-chart" id="ca-memory-chart"></div>
     <div class="ca-sub">Each point is the highest reading in its stretch of time. Above the RAM line the
       machine is using swap; admission control keeps starts under the budget. <a href="#/host">Change the rules</a></div>
   </section>
