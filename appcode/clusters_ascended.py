@@ -358,6 +358,14 @@ body{background:var(--bg);color:var(--txt);}
 .ca-refusal summary{cursor:pointer;color:var(--warn);}
 .ca-fits{color:var(--good);font-size:13px;}
 .ca-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:2px;}
+.ca-group[data-kind="off"] .ca-grid{grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:10px;}
+.ca-server.ca-compact{padding:10px 14px 10px;gap:6px;}
+.ca-server.ca-compact header{align-items:center;}
+.ca-server.ca-compact h3{font-size:15px;}
+.ca-server.ca-compact h3 .ca-sub{font-size:12.5px;font-weight:500;}
+.ca-server.ca-compact .ca-fits{display:inline;}
+.ca-server.ca-compact .ca-btn{padding:3px 10px;}
+.ca-server.ca-compact .ca-refusal{padding:6px 10px;}
 .ca-btn{display:inline-flex;align-items:center;gap:6px;background:var(--card2);color:var(--txt);border:1px solid var(--line2);
   border-radius:999px;padding:6px 14px;font:inherit;font-size:13px;cursor:pointer;text-decoration:none;
   transition:border-color .12s ease,color .12s ease,background .12s ease;}
