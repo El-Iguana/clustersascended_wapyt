@@ -30,6 +30,11 @@ CANCELLABLE = ("start", "restart", "make_room_start", "update", "warned_restart"
 # Map colours for the memory bar, by position in the cluster list.
 
 
+
+def is_active(s: dict) -> bool:
+    """A map that is up, on its way up or down, or has a job queued or running."""
+    return bool(s.get("job")) or (s.get("phase") or "unknown") not in ("stopped", "absent", "unknown")
+
 class DashboardView:
     def __init__(self, container) -> None:
         self.el = container
@@ -173,13 +178,22 @@ class DashboardView:
         if c.get("memory_cap"):
             limits.append(f"capped at {gib(c['memory_cap'])}")
         mods = len((c.get("defaults") or {}).get("mod_ids") or [])
-        cards = "".join(self._server(s, colours.get(s["id"], "#64748b")) for s in c["servers"])
+        active = [s for s in c["servers"] if is_active(s)]
+        idle = [s for s in c["servers"] if not is_active(s)]
+        groups = []
+        for title, icon, kind, servers in (("Running", "mdi-play-circle-outline", "on", active),
+                                           ("Stopped", "mdi-stop-circle-outline", "off", idle)):
+            if servers:
+                cards = "".join(self._server(s, colours.get(s["id"], "#64748b")) for s in servers)
+                groups.append(f'<div class="ca-group" data-kind="{kind}"><h4 class="ca-group-head">'
+                              f'<span class="mdi {icon}"></span> {title} <span class="ca-count">{len(servers)}</span>'
+                              f'</h4><div class="ca-grid">{cards}</div></div>')
         behind = " ca-primary" if any((s.get("flags") or {}).get("update_available") for s in c["servers"]) else ""
         buttons = (f'<button class="ca-btn" data-act="start_cluster" data-cluster="{esc(c["id"])}">'
                    '<span class="mdi mdi-play-box-multiple-outline"></span> Start all</button> '
                    f'<button class="ca-btn{behind}" data-act="update_cluster" data-cluster="{esc(c["id"])}">'
                    '<span class="mdi mdi-update"></span> Update all</button>') if c["servers"] else ""
-        grid = (f'<div class="ca-grid">{cards}</div>' if c["servers"] else
+        grid = ("".join(groups) if c["servers"] else
                 f'<div class="ca-card ca-empty">No maps yet. <a href="#/cluster/{esc(c["id"])}/add">'
                 "Add the first map</a>.</div>")
         return f"""
@@ -218,7 +232,7 @@ class DashboardView:
                 who = (f'<a class="ca-players ca-plain" href="#/map/{esc(s["id"])}/players"><span class="mdi mdi-account-multiple"></span> '
                        f'{len(players)}{": " + names if names else ""}</a>')
         uptime = ""
-        if s.get("ready_at"):
+        if s.get("ready_at") and s["phase"] == "ready":
             uptime = f" · up {duration(js.Date.now() / 1000 - s['ready_at'])}"
         elif s["phase"] == "starting" and s.get("started_at"):
             uptime = f" · loading {duration(js.Date.now() / 1000 - s['started_at'])}"
