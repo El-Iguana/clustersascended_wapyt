@@ -286,6 +286,29 @@ class DashboardView:
         if job:
             buttons.append(f'<a class="ca-btn" href="#/jobs/{job["id"]}"><span class="mdi mdi-text-long"></span> Job</a>')
 
+        if not is_active(s):
+            fits = ""
+            if p and p["ok"]:
+                fits = ' · <span class="ca-fits"><span class="mdi mdi-check"></span> fits now</span>'
+                preview = ""
+            elif p:
+                preview = (f'<div class="ca-refusal"><span class="mdi mdi-memory"></span> {esc(p["reason"])}'
+                           f'<details><summary>Why</summary>{"".join(f"<div>{esc(x)}</div>" for x in p["lines"])}'
+                           f"</details></div>")
+            return f"""
+<article class="ca-server ca-compact" style="--ca-colour:{colour}">
+  <header>
+    <h3><a class="ca-plain" href="#/map/{sid}">{esc(s["name"])}</a>
+      <span class="ca-sub">· {esc(s["session"])}</span></h3>
+    <span class="ca-badge" data-kind="{kind}">{esc(label)}</span>
+  </header>
+  <div class="ca-sub"><span class="ca-k">Needs</span> {gib(s["need_start"])} to start · {gib(s["need"])} running{fits}</div>
+  <div class="ca-chips">{''.join(chips)}</div>
+  {held}
+  {preview}
+  <div class="ca-actions">{''.join(buttons)}</div>
+</article>"""
+
         return f"""
 <article class="ca-server" style="--ca-colour:{colour}">
   <header>
