@@ -334,6 +334,12 @@ body{background:var(--bg);color:var(--txt);}
 .ca-cluster{display:flex;flex-direction:column;gap:10px;}
 .ca-cluster-head{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap;}
 .ca-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:14px;}
+.ca-group{display:flex;flex-direction:column;gap:8px;}
+.ca-group+.ca-group{margin-top:6px;}
+.ca-group-head{margin:0;font-size:12.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--txt2);
+  display:flex;align-items:center;gap:6px;}
+.ca-group-head .ca-count{font-weight:600;color:var(--mut);letter-spacing:0;}
+.ca-group[data-kind="on"] .ca-group-head .mdi{color:var(--good);}
 .ca-server{position:relative;overflow:hidden;
   background:radial-gradient(520px 170px at 0% 0%,color-mix(in srgb,var(--ca-colour) 13%,transparent),transparent 70%),var(--card);
   border:1px solid var(--line);border-radius:var(--radius);padding:16px 18px 14px;display:flex;flex-direction:column;gap:8px;
